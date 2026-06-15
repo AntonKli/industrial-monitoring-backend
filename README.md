@@ -98,7 +98,7 @@ rtz/+/health
   "v": 1,
   "ts": 123001,
   "seq": 4,
-  "event_type": "ALARM_RAISED"
+  "type": "ALARM_RAISED"
 }
 ```
 
