@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: industrial-monitoring-postgres
+    environment:
+      POSTGRES_DB: industrial_monitoring
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - industrial_monitoring_postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: industrial-monitoring-backend
+    depends_on:
+      - postgres
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/industrial_monitoring
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID}
+      MQTT_TOPIC_ROOT: ${MQTT_TOPIC_ROOT}
+      MQTT_DEVICE_ID: ${MQTT_DEVICE_ID}
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    ports:
+      - "8080:8080"
+
+volumes:
+  industrial_monitoring_postgres_data:
