@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/industrial_monitoring
+    username: industrial_user
+    password: industrial_password
+
+mqtt:
+  broker-url: tcp://localhost:1883
+  client-id: test-client
+  topic-root: rtz
+  device-id: edge01
+  username: edge
+  password: edge_password
