@@ -5,6 +5,8 @@ import com.example.industrialmonitoring.service.TelemetryService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.OffsetDateTime;
 
 import java.util.List;
 
@@ -56,4 +58,19 @@ public class TelemetryController {
                 PageRequest.of(page, size)
         );
     }
+    @GetMapping("/device/{deviceId}/range")
+public Page<TelemetryRecordResponse> getTelemetryRecordsByDeviceIdAndTimeRange(
+        @PathVariable String deviceId,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "50") int size
+) {
+    return telemetryService.findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
+            deviceId,
+            from,
+            to,
+            PageRequest.of(page, size)
+    );
+}
 }

@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.OffsetDateTime;
 
 import java.util.List;
 
@@ -59,4 +60,18 @@ public class TelemetryService {
         return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId, pageable)
                 .map(telemetryRecordMapper::toResponse);
     }
+@Transactional(readOnly = true)
+public Page<TelemetryRecordResponse> findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
+        String deviceId,
+        OffsetDateTime from,
+        OffsetDateTime to,
+        Pageable pageable
+) {
+    return telemetryRecordRepository.findByDeviceIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+            deviceId,
+            from,
+            to,
+            pageable
+    ).map(telemetryRecordMapper::toResponse);
+}
 }

@@ -132,4 +132,21 @@ void shouldReturnPagedTelemetryRecordsByDeviceId() throws Exception {
             .andExpect(jsonPath("$.size").value(10))
             .andExpect(jsonPath("$.totalElements").value(1));
 }
+@Test
+void shouldReturnTelemetryRecordsByDeviceIdAndTimeRange() throws Exception {
+    mockMvc.perform(get("/api/telemetry/device/edge01/range")
+                    .param("from", "2000-01-01T00:00:00Z")
+                    .param("to", "2100-01-01T00:00:00Z")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content", hasSize(1)))
+            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+            .andExpect(jsonPath("$.content[0].rpm").value(1600))
+            .andExpect(jsonPath("$.number").value(0))
+            .andExpect(jsonPath("$.size").value(10))
+            .andExpect(jsonPath("$.totalElements").value(1));
+}
 }
