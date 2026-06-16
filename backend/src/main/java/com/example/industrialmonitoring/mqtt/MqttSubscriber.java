@@ -5,7 +5,14 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
+
+@ConditionalOnProperty(
+        name = "mqtt.subscriber.enabled",
+        havingValue = "true",
+        matchIfMissing = true
+)
 @Component
 public class MqttSubscriber {
 

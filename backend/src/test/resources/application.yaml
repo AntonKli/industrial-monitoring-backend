@@ -11,3 +11,6 @@ mqtt:
   device-id: edge01
   username: edge
   password: edge_password
+
+  subscriber:
+    enabled: false
