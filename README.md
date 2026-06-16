@@ -1,10 +1,12 @@
 # Industrial Monitoring Backend
 
-Spring Boot backend for the Industrial Edge Gateway ecosystem.
+Industrial monitoring backend built with Spring Boot for ingesting, storing and exposing telemetry data from distributed industrial edge devices.
 
-This project extends the Industrial Edge Gateway implemented in CODESYS and provides data persistence, REST APIs and monitoring capabilities for industrial telemetry data.
+The backend is part of the Industrial Edge Gateway ecosystem and integrates with a custom MQTT gateway implemented in CODESYS.
 
-Related project:
+## Related Project
+
+Industrial Edge Gateway (CODESYS)
 
 https://github.com/AntonKli/industrial-edge-gateway-codesys
 
@@ -12,27 +14,32 @@ https://github.com/AntonKli/industrial-edge-gateway-codesys
 
 ## Overview
 
-The Industrial Edge Gateway publishes telemetry, event and health information via MQTT.
+Industrial edge devices publish telemetry, event and health data via MQTT.
 
-This backend subscribes to MQTT topics, stores incoming data in PostgreSQL and exposes the data through REST endpoints and Swagger UI.
+This backend subscribes to MQTT topics, validates and persists incoming messages, and exposes operational data through REST APIs and OpenAPI documentation.
 
-### Architecture
+---
+
+## Architecture
 
 ```text
-CODESYS Edge Gateway
-        |
-        | MQTT
-        v
+CODESYS PLC Runtime
+        │
+        ▼
+Industrial Edge Gateway
+        │
+        │ MQTT
+        ▼
 Mosquitto Broker
-        |
-        v
+        │
+        ▼
 Spring Boot Backend
-        |
-        v
+        │
+        ▼
 PostgreSQL
-        |
-        v
-REST API / Swagger UI
+        │
+        ├── REST API
+        └── Swagger UI
 ```
 
 ---
@@ -41,37 +48,43 @@ REST API / Swagger UI
 
 ### Backend
 
-* Java 21
-* Spring Boot 3.5
-* Spring Data JPA
-* Hibernate
-* Flyway
+- Java 21
+- Spring Boot 3.5
+- Spring Data JPA
+- Hibernate
+- Flyway
 
 ### Messaging
 
-* MQTT
-* Eclipse Paho MQTT Client
-* Mosquitto Broker
+- MQTT
+- Eclipse Paho MQTT Client
+- Eclipse Mosquitto
 
 ### Database
 
-* PostgreSQL 16
+- PostgreSQL 16
 
-### Documentation
+### Testing
 
-* OpenAPI
-* Swagger UI
+- JUnit 5
+- Testcontainers
+- MockMvc
 
 ### Infrastructure
 
-* Docker
-* Docker Compose
+- Docker
+- Docker Compose
+
+### Documentation
+
+- OpenAPI 3
+- Swagger UI
 
 ---
 
 ## MQTT Topics
 
-The backend subscribes to the following topics:
+The backend subscribes to:
 
 ```text
 rtz/+/telemetry
@@ -151,9 +164,9 @@ GET /api/health/device/{deviceId}
 
 ---
 
-## Swagger UI
+## API Documentation
 
-Available at:
+Swagger UI:
 
 ```text
 http://localhost:8080/swagger-ui.html
@@ -161,21 +174,21 @@ http://localhost:8080/swagger-ui.html
 
 ---
 
-## Running with Docker
+## Running Locally
 
-Build:
+### Build
 
 ```bash
 docker compose build
 ```
 
-Start:
+### Start
 
 ```bash
 docker compose up -d
 ```
 
-Stop:
+### Stop
 
 ```bash
 docker compose down
@@ -183,17 +196,17 @@ docker compose down
 
 ---
 
-## Environment Variables
+## Configuration
 
-Configuration is provided through environment variables.
+Application configuration is provided through environment variables.
 
-Example configuration is available in:
+Example configuration:
 
 ```text
 .env.example
 ```
 
-Local development configuration should be stored in:
+Local development configuration:
 
 ```text
 .env
@@ -201,27 +214,73 @@ Local development configuration should be stored in:
 
 ---
 
-## Project Status
+## Testing
 
-Current implementation includes:
+Automated integration testing is implemented using Testcontainers.
 
-* MQTT ingestion
-* Device registration
-* Telemetry persistence
-* Event persistence
-* Health persistence
-* PostgreSQL integration
-* REST API
-* Swagger documentation
-* Docker deployment
+### Test Coverage
 
-Planned extensions:
+#### Application Context
 
-* Integration tests using Testcontainers
-* Metrics and monitoring
-* Dashboard integration
-* Authentication and authorization
-* Historical analytics
+- Spring Boot startup
+- PostgreSQL connectivity
+- Flyway migrations
 
+#### Repository Integration Tests
+
+- Telemetry persistence
+- PostgreSQL interaction
+
+#### REST API Integration Tests
+
+- Telemetry endpoints
+- Controller-Service-Repository flow
+
+#### MQTT Ingestion Integration Tests
+
+```text
+TelemetryMessage
+        ↓
+MqttIngestionService
+        ↓
+Device Registration
+        ↓
+Telemetry Persistence
+        ↓
+PostgreSQL
 ```
+
+### Run Tests
+
+```bash
+mvn test
 ```
+
+---
+
+## Current Features
+
+- MQTT ingestion pipeline
+- Automatic device registration
+- Telemetry persistence
+- Event persistence
+- Health persistence
+- PostgreSQL integration
+- Flyway migrations
+- REST API
+- OpenAPI documentation
+- Docker deployment
+- Testcontainers integration
+- Repository integration tests
+- REST integration tests
+- MQTT ingestion integration tests
+
+---
+
+## Roadmap
+
+- GitHub Actions CI/CD
+- Metrics and observability
+- Dashboard integration
+- Authentication and authorization
+- Historical analytics
