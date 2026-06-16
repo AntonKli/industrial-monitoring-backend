@@ -16,7 +16,7 @@ https://github.com/AntonKli/industrial-edge-gateway-codesys
 
 Industrial edge devices publish telemetry, event and health data via MQTT.
 
-This backend subscribes to MQTT topics, validates and persists incoming messages, and exposes operational data through REST APIs and OpenAPI documentation.
+This backend subscribes to MQTT topics, validates and persists incoming messages, and exposes operational data through REST APIs, OpenAPI documentation and operational monitoring endpoints.
 
 ---
 
@@ -39,6 +39,7 @@ Spring Boot Backend
 PostgreSQL
         │
         ├── REST API
+        ├── Actuator Endpoints
         └── Swagger UI
 ```
 
@@ -63,6 +64,10 @@ PostgreSQL
 ### Database
 
 - PostgreSQL 16
+
+### Monitoring
+
+- Spring Boot Actuator
 
 ### Testing
 
@@ -145,7 +150,12 @@ GET /api/devices/{deviceId}
 ```text
 GET /api/telemetry
 GET /api/telemetry/latest
+GET /api/telemetry/paged?page=0&size=50
+
 GET /api/telemetry/device/{deviceId}
+GET /api/telemetry/device/{deviceId}/paged?page=0&size=50
+
+GET /api/telemetry/device/{deviceId}/range?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z&page=0&size=50
 ```
 
 ### Events
@@ -161,6 +171,26 @@ GET /api/events/device/{deviceId}
 GET /api/health
 GET /api/health/latest
 GET /api/health/device/{deviceId}
+```
+
+---
+
+## Operational Monitoring
+
+### Actuator Endpoints
+
+```text
+GET /actuator/health
+GET /actuator/info
+GET /actuator/metrics
+```
+
+### Example Health Response
+
+```json
+{
+  "status": "UP"
+}
 ```
 
 ---
@@ -243,6 +273,8 @@ Automated integration testing is implemented using Testcontainers and executed a
 #### REST API Integration Tests
 
 - Telemetry endpoints
+- Pagination endpoints
+- Time-range filtering endpoints
 - Event endpoints
 - Health endpoints
 - Controller-Service-Repository flow
@@ -274,10 +306,13 @@ Pipeline stages include:
 - Event ingestion
 - Health monitoring ingestion
 - Automatic device registration
+- Telemetry pagination
+- Telemetry time-range filtering
 - PostgreSQL persistence
 - Database versioning with Flyway
 - REST API access layer
 - OpenAPI documentation
+- Spring Boot Actuator monitoring
 - Docker-based deployment
 - Automated integration testing
 - Continuous Integration with GitHub Actions
@@ -286,11 +321,11 @@ Pipeline stages include:
 
 ## Roadmap
 
-- Metrics and observability
 - Prometheus integration
 - Grafana dashboards
 - Historical trend analysis
-- Pagination and query optimization
-- Time-range filtering
+- Advanced search and filtering
 - Authentication and authorization
 - Multi-device fleet management
+- Device health dashboards
+- Alerting and notification mechanisms
