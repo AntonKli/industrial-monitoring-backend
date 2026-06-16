@@ -74,6 +74,7 @@ PostgreSQL
 
 - Docker
 - Docker Compose
+- GitHub Actions
 
 ### Documentation
 
@@ -216,11 +217,11 @@ Local development configuration:
 
 ## Testing
 
-Automated integration testing is implemented using Testcontainers.
+Automated integration testing is implemented using Testcontainers and executed automatically through GitHub Actions.
 
 ### Test Coverage
 
-#### Application Context
+#### Application Context Tests
 
 - Spring Boot startup
 - PostgreSQL connectivity
@@ -231,24 +232,20 @@ Automated integration testing is implemented using Testcontainers.
 - Telemetry persistence
 - PostgreSQL interaction
 
+#### MQTT Ingestion Integration Tests
+
+- Telemetry ingestion
+- Event ingestion
+- Health ingestion
+- Automatic device registration
+- Persistence verification
+
 #### REST API Integration Tests
 
 - Telemetry endpoints
+- Event endpoints
+- Health endpoints
 - Controller-Service-Repository flow
-
-#### MQTT Ingestion Integration Tests
-
-```text
-TelemetryMessage
-        ↓
-MqttIngestionService
-        ↓
-Device Registration
-        ↓
-Telemetry Persistence
-        ↓
-PostgreSQL
-```
 
 ### Run Tests
 
@@ -258,29 +255,42 @@ mvn test
 
 ---
 
-## Current Features
+## CI Pipeline
 
-- MQTT ingestion pipeline
+GitHub Actions automatically executes the test suite for every push and pull request targeting the main branch.
+
+Pipeline stages include:
+
+- Build validation
+- Spring Boot context verification
+- Integration test execution
+- PostgreSQL Testcontainer provisioning
+
+---
+
+## Current Capabilities
+
+- MQTT telemetry ingestion
+- Event ingestion
+- Health monitoring ingestion
 - Automatic device registration
-- Telemetry persistence
-- Event persistence
-- Health persistence
-- PostgreSQL integration
-- Flyway migrations
-- REST API
+- PostgreSQL persistence
+- Database versioning with Flyway
+- REST API access layer
 - OpenAPI documentation
-- Docker deployment
-- Testcontainers integration
-- Repository integration tests
-- REST integration tests
-- MQTT ingestion integration tests
+- Docker-based deployment
+- Automated integration testing
+- Continuous Integration with GitHub Actions
 
 ---
 
 ## Roadmap
 
-- GitHub Actions CI/CD
 - Metrics and observability
-- Dashboard integration
+- Prometheus integration
+- Grafana dashboards
+- Historical trend analysis
+- Pagination and query optimization
+- Time-range filtering
 - Authentication and authorization
-- Historical analytics
+- Multi-device fleet management
