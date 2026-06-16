@@ -4,6 +4,8 @@ import com.example.industrialmonitoring.dto.TelemetryRecordResponse;
 import com.example.industrialmonitoring.exception.TelemetryRecordNotFoundException;
 import com.example.industrialmonitoring.mapper.TelemetryRecordMapper;
 import com.example.industrialmonitoring.repository.TelemetryRecordRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,12 @@ public class TelemetryService {
     }
 
     @Transactional(readOnly = true)
+    public Page<TelemetryRecordResponse> findAllTelemetryRecords(Pageable pageable) {
+        return telemetryRecordRepository.findAll(pageable)
+                .map(telemetryRecordMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
     public TelemetryRecordResponse findLatestTelemetryRecord() {
         return telemetryRecordRepository.findFirstByOrderByCreatedAtDesc()
                 .map(telemetryRecordMapper::toResponse)
@@ -44,5 +52,11 @@ public class TelemetryService {
                 .stream()
                 .map(telemetryRecordMapper::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelemetryRecordResponse> findTelemetryRecordsByDeviceId(String deviceId, Pageable pageable) {
+        return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId, pageable)
+                .map(telemetryRecordMapper::toResponse);
     }
 }

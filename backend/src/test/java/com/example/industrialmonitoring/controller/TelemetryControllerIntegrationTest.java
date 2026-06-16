@@ -101,4 +101,35 @@ class TelemetryControllerIntegrationTest {
                 .andExpect(jsonPath("$[0].temperatureC").value(30.2))
                 .andExpect(jsonPath("$[0].rpm").value(1600));
     }
+@Test
+void shouldReturnPagedTelemetryRecords() throws Exception {
+    mockMvc.perform(get("/api/telemetry/paged")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content", hasSize(1)))
+            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+            .andExpect(jsonPath("$.content[0].rpm").value(1600))
+            .andExpect(jsonPath("$.number").value(0))
+            .andExpect(jsonPath("$.size").value(10))
+            .andExpect(jsonPath("$.totalElements").value(1));
+}
+
+@Test
+void shouldReturnPagedTelemetryRecordsByDeviceId() throws Exception {
+    mockMvc.perform(get("/api/telemetry/device/edge01/paged")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content", hasSize(1)))
+            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+            .andExpect(jsonPath("$.content[0].rpm").value(1600))
+            .andExpect(jsonPath("$.number").value(0))
+            .andExpect(jsonPath("$.size").value(10))
+            .andExpect(jsonPath("$.totalElements").value(1));
+}
 }
