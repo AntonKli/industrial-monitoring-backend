@@ -21,7 +21,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: industrial-monitoring-backend
+    description: Industrial monitoring backend for MQTT based edge telemetry
+    version: 0.0.1-SNAPSHOT
 
 server:
   port: 8080
