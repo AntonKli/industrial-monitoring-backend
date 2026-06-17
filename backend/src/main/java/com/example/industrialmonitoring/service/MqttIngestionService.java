@@ -9,6 +9,8 @@ import com.example.industrialmonitoring.entity.TelemetryRecordEntity;
 import com.example.industrialmonitoring.repository.EventRecordRepository;
 import com.example.industrialmonitoring.repository.HealthRecordRepository;
 import com.example.industrialmonitoring.repository.TelemetryRecordRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,16 +22,33 @@ public class MqttIngestionService {
     private final EventRecordRepository eventRecordRepository;
     private final HealthRecordRepository healthRecordRepository;
 
+    private final Counter telemetryRecordsSavedCounter;
+    private final Counter eventRecordsSavedCounter;
+    private final Counter healthRecordsSavedCounter;
+
     public MqttIngestionService(
             DeviceService deviceService,
             TelemetryRecordRepository telemetryRecordRepository,
             EventRecordRepository eventRecordRepository,
-            HealthRecordRepository healthRecordRepository
+            HealthRecordRepository healthRecordRepository,
+            MeterRegistry meterRegistry
     ) {
         this.deviceService = deviceService;
         this.telemetryRecordRepository = telemetryRecordRepository;
         this.eventRecordRepository = eventRecordRepository;
         this.healthRecordRepository = healthRecordRepository;
+
+        this.telemetryRecordsSavedCounter = Counter.builder("industrial_telemetry_records_saved_total")
+                .description("Total number of persisted telemetry records")
+                .register(meterRegistry);
+
+        this.eventRecordsSavedCounter = Counter.builder("industrial_event_records_saved_total")
+                .description("Total number of persisted event records")
+                .register(meterRegistry);
+
+        this.healthRecordsSavedCounter = Counter.builder("industrial_health_records_saved_total")
+                .description("Total number of persisted health records")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -45,6 +64,7 @@ public class MqttIngestionService {
         );
 
         telemetryRecordRepository.save(entity);
+        telemetryRecordsSavedCounter.increment();
     }
 
     @Transactional
@@ -59,6 +79,7 @@ public class MqttIngestionService {
         );
 
         eventRecordRepository.save(entity);
+        eventRecordsSavedCounter.increment();
     }
 
     @Transactional
@@ -82,5 +103,6 @@ public class MqttIngestionService {
         );
 
         healthRecordRepository.save(entity);
+        healthRecordsSavedCounter.increment();
     }
 }

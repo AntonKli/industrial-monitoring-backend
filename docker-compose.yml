@@ -11,6 +11,14 @@ services:
     volumes:
       - industrial_monitoring_postgres_data:/var/lib/postgresql/data
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: industrial-monitoring-mosquitto
+    ports:
+      - "1884:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
   backend:
     build:
       context: ./backend
@@ -18,11 +26,12 @@ services:
     container_name: industrial-monitoring-backend
     depends_on:
       - postgres
+      - mosquitto
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/industrial_monitoring
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-      MQTT_BROKER_URL: ${MQTT_BROKER_URL}
+      MQTT_BROKER_URL: tcp://mosquitto:1883
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID}
       MQTT_TOPIC_ROOT: ${MQTT_TOPIC_ROOT}
       MQTT_DEVICE_ID: ${MQTT_DEVICE_ID}
@@ -30,6 +39,27 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD}
     ports:
       - "8080:8080"
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: industrial-monitoring-prometheus
+    depends_on:
+      - backend
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: industrial-monitoring-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "13000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
 
 volumes:
   industrial_monitoring_postgres_data:

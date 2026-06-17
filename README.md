@@ -18,29 +18,37 @@ Industrial edge devices publish telemetry, event and health data via MQTT.
 
 This backend subscribes to MQTT topics, validates and persists incoming messages, and exposes operational data through REST APIs, OpenAPI documentation and operational monitoring endpoints.
 
+The project provides a complete industrial data pipeline from MQTT based edge communication to backend persistence, API access, Prometheus metrics and Grafana visualization.
+
 ---
 
 ## Architecture
 
 ```text
 CODESYS PLC Runtime
-        │
-        ▼
+        |
+        v
 Industrial Edge Gateway
-        │
-        │ MQTT
-        ▼
+        |
+        | MQTT
+        v
 Mosquitto Broker
-        │
-        ▼
+        |
+        v
 Spring Boot Backend
-        │
-        ▼
+        |
+        +--> REST API
+        +--> OpenAPI / Swagger UI
+        +--> Actuator Endpoints
+        +--> Prometheus Metrics
+        |
+        v
 PostgreSQL
-        │
-        ├── REST API
-        ├── Actuator Endpoints
-        └── Swagger UI
+
+Prometheus
+        |
+        v
+Grafana
 ```
 
 ---
@@ -68,6 +76,8 @@ PostgreSQL
 ### Monitoring
 
 - Spring Boot Actuator
+- Prometheus
+- Grafana
 
 ### Testing
 
@@ -183,6 +193,7 @@ GET /api/health/device/{deviceId}
 GET /actuator/health
 GET /actuator/info
 GET /actuator/metrics
+GET /actuator/prometheus
 ```
 
 ### Example Health Response
@@ -192,6 +203,24 @@ GET /actuator/metrics
   "status": "UP"
 }
 ```
+
+### Custom Prometheus Metrics
+
+```text
+industrial_telemetry_records_saved_total
+industrial_event_records_saved_total
+industrial_health_records_saved_total
+```
+
+---
+
+## Monitoring Dashboard
+
+The backend exports custom Prometheus metrics and provides a Grafana dashboard for operational monitoring.
+
+### Grafana Dashboard
+
+![Grafana Dashboard](docs/images/grafana-dashboard.png)
 
 ---
 
@@ -223,6 +252,22 @@ docker compose up -d
 
 ```bash
 docker compose down
+```
+
+### Service URLs
+
+```text
+Backend API:   http://localhost:8080
+Swagger UI:    http://localhost:8080/swagger-ui.html
+Prometheus:    http://localhost:19090
+Grafana:       http://localhost:13000
+```
+
+Default Grafana login:
+
+```text
+Username: admin
+Password: admin
 ```
 
 ---
@@ -313,19 +358,11 @@ Pipeline stages include:
 - REST API access layer
 - OpenAPI documentation
 - Spring Boot Actuator monitoring
-- Docker-based deployment
+- Prometheus metrics export
+- Grafana dashboard visualization
+- Docker based deployment
 - Automated integration testing
 - Continuous Integration with GitHub Actions
 
 ---
 
-## Roadmap
-
-- Prometheus integration
-- Grafana dashboards
-- Historical trend analysis
-- Advanced search and filtering
-- Authentication and authorization
-- Multi-device fleet management
-- Device health dashboards
-- Alerting and notification mechanisms
