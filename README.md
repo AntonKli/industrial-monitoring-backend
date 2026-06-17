@@ -20,6 +20,8 @@ This backend subscribes to MQTT topics, validates and persists incoming messages
 
 The project provides a complete industrial data pipeline from MQTT based edge communication to backend persistence, API access, Prometheus metrics and Grafana visualization.
 
+The complete data flow has been validated using a real CODESYS based Industrial Edge Gateway publishing MQTT messages through Mosquitto into the backend, PostgreSQL database, Prometheus metrics endpoint and Grafana dashboard.
+
 ---
 
 ## Architecture
@@ -37,18 +39,17 @@ Mosquitto Broker
         v
 Spring Boot Backend
         |
+        +--> PostgreSQL
         +--> REST API
         +--> OpenAPI / Swagger UI
         +--> Actuator Endpoints
         +--> Prometheus Metrics
-        |
-        v
-PostgreSQL
-
-Prometheus
-        |
-        v
-Grafana
+                    |
+                    v
+              Prometheus
+                    |
+                    v
+                Grafana
 ```
 
 ---
@@ -108,6 +109,14 @@ rtz/+/events
 rtz/+/health
 ```
 
+Example device topics:
+
+```text
+rtz/edge01/telemetry
+rtz/edge01/events
+rtz/edge01/health
+```
+
 ### Example Telemetry Message
 
 ```json
@@ -140,7 +149,14 @@ rtz/+/health
   "seq": 5,
   "state": 2,
   "mqtt_connected": true,
-  "pub_last_ok": true
+  "pub_last_ok": true,
+  "buffer_fill": 0,
+  "buffer_drops": 0,
+  "diag_uptime_s": 123,
+  "diag_reconnects": 1,
+  "diag_pub_ok": 120,
+  "diag_pub_fail": 0,
+  "diag_last_error": 0
 }
 ```
 
@@ -342,6 +358,8 @@ Pipeline stages include:
 - Spring Boot context verification
 - Integration test execution
 - PostgreSQL Testcontainer provisioning
+- MQTT ingestion validation
+- Prometheus metrics validation
 
 ---
 
@@ -365,4 +383,3 @@ Pipeline stages include:
 - Continuous Integration with GitHub Actions
 
 ---
-
