@@ -49,6 +49,9 @@ public class AnnualExportJobConfig {
     private static final String HEALTH_STEP_NAME =
             "healthExportStep";
 
+    private static final String FINALIZE_STEP_NAME =
+            "finalizeAnnualExportStep";
+
     private static final String TELEMETRY_HEADER =
             "id,device_id,gateway_timestamp,sequence_number,"
                     + "temperature_c,rpm,created_at";
@@ -73,13 +76,16 @@ public class AnnualExportJobConfig {
             @Qualifier("eventExportStep")
             Step eventExportStep,
             @Qualifier("healthExportStep")
-            Step healthExportStep
+            Step healthExportStep,
+            @Qualifier("finalizeAnnualExportStep")
+            Step finalizeAnnualExportStep
     ) {
         return new JobBuilder(JOB_NAME, jobRepository)
                 .start(prepareAnnualExportStep)
                 .next(telemetryExportStep)
                 .next(eventExportStep)
                 .next(healthExportStep)
+                .next(finalizeAnnualExportStep)
                 .build();
     }
 
@@ -102,6 +108,24 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
+    public Step finalizeAnnualExportStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            @Qualifier("finalizeAnnualExportTasklet")
+            Tasklet finalizeAnnualExportTasklet
+    ) {
+        return new StepBuilder(
+                FINALIZE_STEP_NAME,
+                jobRepository
+        )
+                .tasklet(
+                        finalizeAnnualExportTasklet,
+                        transactionManager
+                )
+                .build();
+    }
+
+    @Bean
     @StepScope
     public Tasklet prepareAnnualExportTasklet(
             ExportFileService exportFileService,
@@ -112,6 +136,22 @@ public class AnnualExportJobConfig {
             int exportYear = Math.toIntExact(year);
 
             exportFileService.prepareStagingDirectory(exportYear);
+
+            return RepeatStatus.FINISHED;
+        };
+    }
+
+    @Bean
+    @StepScope
+    public Tasklet finalizeAnnualExportTasklet(
+            ExportFileService exportFileService,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        return (contribution, chunkContext) -> {
+            int exportYear = Math.toIntExact(year);
+
+            exportFileService.publish(exportYear);
 
             return RepeatStatus.FINISHED;
         };
