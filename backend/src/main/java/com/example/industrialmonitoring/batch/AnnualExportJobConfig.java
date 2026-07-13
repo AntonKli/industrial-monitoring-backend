@@ -2,6 +2,7 @@ package com.example.industrialmonitoring.batch;
 
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.entity.EventRecordEntity;
+import com.example.industrialmonitoring.entity.HealthRecordEntity;
 import com.example.industrialmonitoring.entity.TelemetryRecordEntity;
 import com.example.industrialmonitoring.export.CsvLineFormatter;
 import com.example.industrialmonitoring.service.ExportFileService;
@@ -45,6 +46,9 @@ public class AnnualExportJobConfig {
     private static final String EVENT_STEP_NAME =
             "eventExportStep";
 
+    private static final String HEALTH_STEP_NAME =
+            "healthExportStep";
+
     private static final String TELEMETRY_HEADER =
             "id,device_id,gateway_timestamp,sequence_number,"
                     + "temperature_c,rpm,created_at";
@@ -52,6 +56,12 @@ public class AnnualExportJobConfig {
     private static final String EVENT_HEADER =
             "id,device_id,gateway_timestamp,sequence_number,"
                     + "event_type,created_at";
+
+    private static final String HEALTH_HEADER =
+            "id,device_id,gateway_timestamp,sequence_number,"
+                    + "state,mqtt_connected,pub_last_ok,buffer_fill,"
+                    + "buffer_drops,diag_uptime_s,diag_reconnects,"
+                    + "diag_pub_ok,diag_pub_fail,diag_last_error,created_at";
 
     @Bean
     public Job annualMonitoringExportJob(
@@ -61,12 +71,15 @@ public class AnnualExportJobConfig {
             @Qualifier("telemetryExportStep")
             Step telemetryExportStep,
             @Qualifier("eventExportStep")
-            Step eventExportStep
+            Step eventExportStep,
+            @Qualifier("healthExportStep")
+            Step healthExportStep
     ) {
         return new JobBuilder(JOB_NAME, jobRepository)
                 .start(prepareAnnualExportStep)
                 .next(telemetryExportStep)
                 .next(eventExportStep)
+                .next(healthExportStep)
                 .build();
     }
 
@@ -151,6 +164,29 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
+    public Step healthExportStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            ExportProperties exportProperties,
+            @Qualifier("healthRecordReader")
+            JpaPagingItemReader<HealthRecordEntity> healthRecordReader,
+            @Qualifier("healthRecordWriter")
+            FlatFileItemWriter<HealthRecordEntity> healthRecordWriter
+    ) {
+        return new StepBuilder(
+                HEALTH_STEP_NAME,
+                jobRepository
+        )
+                .<HealthRecordEntity, HealthRecordEntity>chunk(
+                        exportProperties.chunkSize(),
+                        transactionManager
+                )
+                .reader(healthRecordReader)
+                .writer(healthRecordWriter)
+                .build();
+    }
+
+    @Bean
     @StepScope
     public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
             EntityManagerFactory entityManagerFactory,
@@ -196,6 +232,35 @@ public class AnnualExportJobConfig {
                         where eventRecord.createdAt >= :from
                           and eventRecord.createdAt < :to
                         order by eventRecord.id
+                        """)
+                .parameterValues(
+                        yearRange(
+                                year,
+                                exportProperties.zoneId()
+                        )
+                )
+                .pageSize(exportProperties.chunkSize())
+                .saveState(true)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
+            EntityManagerFactory entityManagerFactory,
+            ExportProperties exportProperties,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        return new JpaPagingItemReaderBuilder<HealthRecordEntity>()
+                .name("healthRecordReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("""
+                        select healthRecord
+                        from HealthRecordEntity healthRecord
+                        where healthRecord.createdAt >= :from
+                          and healthRecord.createdAt < :to
+                        order by healthRecord.id
                         """)
                 .parameterValues(
                         yearRange(
@@ -279,6 +344,54 @@ public class AnnualExportJobConfig {
                                 eventRecord.getSequenceNumber(),
                                 eventRecord.getEventType(),
                                 eventRecord.getCreatedAt()
+                        )
+                )
+                .shouldDeleteIfExists(true)
+                .shouldDeleteIfEmpty(false)
+                .saveState(true)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public FlatFileItemWriter<HealthRecordEntity> healthRecordWriter(
+            ExportFileService exportFileService,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        int exportYear = Math.toIntExact(year);
+
+        return new FlatFileItemWriterBuilder<HealthRecordEntity>()
+                .name("healthRecordWriter")
+                .resource(
+                        new FileSystemResource(
+                                exportFileService.healthStagingFile(
+                                        exportYear
+                                )
+                        )
+                )
+                .encoding(StandardCharsets.UTF_8.name())
+                .lineSeparator("\n")
+                .headerCallback(
+                        writer -> writer.write(HEALTH_HEADER)
+                )
+                .lineAggregator(
+                        healthRecord -> CsvLineFormatter.formatRow(
+                                healthRecord.getId(),
+                                healthRecord.getDeviceId(),
+                                healthRecord.getGatewayTimestamp(),
+                                healthRecord.getSequenceNumber(),
+                                healthRecord.getState(),
+                                healthRecord.getMqttConnected(),
+                                healthRecord.getPubLastOk(),
+                                healthRecord.getBufferFill(),
+                                healthRecord.getBufferDrops(),
+                                healthRecord.getDiagUptimeS(),
+                                healthRecord.getDiagReconnects(),
+                                healthRecord.getDiagPubOk(),
+                                healthRecord.getDiagPubFail(),
+                                healthRecord.getDiagLastError(),
+                                healthRecord.getCreatedAt()
                         )
                 )
                 .shouldDeleteIfExists(true)
