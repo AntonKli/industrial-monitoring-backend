@@ -1,5 +1,6 @@
 package com.example.industrialmonitoring.service;
 
+import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
 import com.example.industrialmonitoring.exception.InvalidExportYearException;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteExcep
 import java.time.Year;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,14 +38,23 @@ class ExportJobServiceTest {
         jobLauncher = mock(JobLauncher.class);
         annualMonitoringExportJob = mock(Job.class);
 
+        ExportProperties exportProperties = new ExportProperties(
+                false,
+                "exports",
+                100,
+                "0 0 2 1 1 *",
+                "Europe/Berlin"
+        );
+
         exportJobService = new ExportJobService(
                 jobLauncher,
-                annualMonitoringExportJob
+                annualMonitoringExportJob,
+                exportProperties
         );
     }
 
     @Test
-    void shouldStartAnnualExportWithYearParameter()
+    void shouldStartAnnualExportWithPeriodParameters()
             throws Exception {
 
         JobExecution jobExecution =
@@ -67,9 +78,47 @@ class ExportJobServiceTest {
                 parametersCaptor.capture()
         );
 
+        JobParameters parameters =
+                parametersCaptor.getValue();
+
         assertEquals(
                 2025L,
-                parametersCaptor.getValue().getLong("year")
+                parameters.getLong("year")
+        );
+
+        assertEquals(
+                "2025-01-01",
+                parameters.getString("fromDate")
+        );
+
+        assertEquals(
+                "2026-01-01",
+                parameters.getString("toDateExclusive")
+        );
+
+        assertEquals(
+                "Europe/Berlin",
+                parameters.getString("zoneId")
+        );
+
+        assertTrue(
+                parameters.getParameter("year")
+                        .isIdentifying()
+        );
+
+        assertFalse(
+                parameters.getParameter("fromDate")
+                        .isIdentifying()
+        );
+
+        assertFalse(
+                parameters.getParameter("toDateExclusive")
+                        .isIdentifying()
+        );
+
+        assertFalse(
+                parameters.getParameter("zoneId")
+                        .isIdentifying()
         );
 
         assertSame(jobExecution, result);
@@ -94,8 +143,8 @@ class ExportJobServiceTest {
 
     @Test
     void shouldRejectFutureYear() {
-        int futureYear =
-                Year.now().getValue() + 1;
+        int currentYear = Year.now().getValue();
+        int futureYear = currentYear + 1;
 
         InvalidExportYearException exception =
                 assertThrows(
@@ -106,11 +155,7 @@ class ExportJobServiceTest {
 
         assertTrue(
                 exception.getMessage()
-                        .contains(
-                                String.valueOf(
-                                        Year.now().getValue()
-                                )
-                        )
+                        .contains(String.valueOf(currentYear))
         );
 
         verifyNoInteractions(jobLauncher);

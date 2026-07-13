@@ -1,8 +1,10 @@
 package com.example.industrialmonitoring.service;
 
 import com.example.industrialmonitoring.batch.AnnualExportJobConfig;
+import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
 import com.example.industrialmonitoring.exception.InvalidExportYearException;
+import com.example.industrialmonitoring.export.ExportPeriod;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
@@ -22,24 +24,30 @@ public class ExportJobService {
 
     private final JobLauncher jobLauncher;
     private final Job annualMonitoringExportJob;
+    private final ExportProperties exportProperties;
 
     public ExportJobService(
             JobLauncher jobLauncher,
             @Qualifier(AnnualExportJobConfig.JOB_NAME)
-            Job annualMonitoringExportJob
+            Job annualMonitoringExportJob,
+            ExportProperties exportProperties
     ) {
         this.jobLauncher = jobLauncher;
         this.annualMonitoringExportJob =
                 annualMonitoringExportJob;
+        this.exportProperties = exportProperties;
     }
 
     public JobExecution startAnnualExport(int year) {
         validateYear(year);
 
+        ExportPeriod period = ExportPeriod.forYear(
+                year,
+                exportProperties.zoneId()
+        );
+
         JobParameters jobParameters =
-                new JobParametersBuilder()
-                        .addLong("year", (long) year)
-                        .toJobParameters();
+                createTransitionalJobParameters(year, period);
 
         try {
             return jobLauncher.run(
@@ -48,8 +56,8 @@ public class ExportJobService {
             );
         } catch (
                 JobExecutionAlreadyRunningException
-                        | JobRestartException
-                        | JobInstanceAlreadyCompleteException exception
+                | JobRestartException
+                | JobInstanceAlreadyCompleteException exception
         ) {
             throw new AnnualExportConflictException(
                     "Annual export for year "
@@ -66,6 +74,40 @@ public class ExportJobService {
                     exception
             );
         }
+    }
+
+    private JobParameters createTransitionalJobParameters(
+            int year,
+            ExportPeriod period
+    ) {
+        return new JobParametersBuilder()
+                /*
+                 * The existing batch configuration still uses year.
+                 * It remains the identifying parameter during this
+                 * transitional implementation step.
+                 */
+                .addLong("year", (long) year)
+
+                /*
+                 * These values prepare the migration to flexible
+                 * ranges but are temporarily non-identifying.
+                 */
+                .addString(
+                        "fromDate",
+                        period.fromDate().toString(),
+                        false
+                )
+                .addString(
+                        "toDateExclusive",
+                        period.toDateExclusive().toString(),
+                        false
+                )
+                .addString(
+                        "zoneId",
+                        period.zoneId().getId(),
+                        false
+                )
+                .toJobParameters();
     }
 
     private void validateYear(int year) {
