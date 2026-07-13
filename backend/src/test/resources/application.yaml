@@ -14,3 +14,10 @@ mqtt:
 
   subscriber:
     enabled: false
+
+export:
+  enabled: false
+  output-dir: target/test-exports
+  chunk-size: 10
+  cron: "0 0 2 1 1 *"
+  zone: Europe/Berlin

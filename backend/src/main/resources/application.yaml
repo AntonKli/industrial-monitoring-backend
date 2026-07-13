@@ -49,6 +49,13 @@ mqtt:
   username: ${MQTT_USERNAME}
   password: ${MQTT_PASSWORD}
 
+export:
+  enabled: ${EXPORT_ENABLED:true}
+  output-dir: ${EXPORT_OUTPUT_DIR:exports}
+  chunk-size: ${EXPORT_CHUNK_SIZE:100}
+  cron: "${EXPORT_CRON:0 0 2 1 1 *}"
+  zone: ${EXPORT_ZONE:Europe/Berlin}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
