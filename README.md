@@ -1,4 +1,3 @@
-````markdown
 # Industrial Monitoring Backend
 
 A Spring Boot backend for ingesting, validating, storing, monitoring and exporting data from industrial edge devices.
@@ -826,4 +825,3 @@ industrial-monitoring-backend/
 - Docker-based deployment
 - Automated testing
 - Continuous integration
-````
