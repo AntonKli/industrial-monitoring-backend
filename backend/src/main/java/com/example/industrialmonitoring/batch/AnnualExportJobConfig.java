@@ -1,6 +1,7 @@
 package com.example.industrialmonitoring.batch;
 
 import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.entity.EventRecordEntity;
 import com.example.industrialmonitoring.entity.TelemetryRecordEntity;
 import com.example.industrialmonitoring.export.CsvLineFormatter;
 import com.example.industrialmonitoring.service.ExportFileService;
@@ -16,6 +17,7 @@ import org.springframework.batch.item.database.JpaPagingItemReader;
 import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.builder.FlatFileItemWriterBuilder;
+import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,9 +42,16 @@ public class AnnualExportJobConfig {
     private static final String TELEMETRY_STEP_NAME =
             "telemetryExportStep";
 
+    private static final String EVENT_STEP_NAME =
+            "eventExportStep";
+
     private static final String TELEMETRY_HEADER =
             "id,device_id,gateway_timestamp,sequence_number,"
                     + "temperature_c,rpm,created_at";
+
+    private static final String EVENT_HEADER =
+            "id,device_id,gateway_timestamp,sequence_number,"
+                    + "event_type,created_at";
 
     @Bean
     public Job annualMonitoringExportJob(
@@ -50,11 +59,14 @@ public class AnnualExportJobConfig {
             @Qualifier("prepareAnnualExportStep")
             Step prepareAnnualExportStep,
             @Qualifier("telemetryExportStep")
-            Step telemetryExportStep
+            Step telemetryExportStep,
+            @Qualifier("eventExportStep")
+            Step eventExportStep
     ) {
         return new JobBuilder(JOB_NAME, jobRepository)
                 .start(prepareAnnualExportStep)
                 .next(telemetryExportStep)
+                .next(eventExportStep)
                 .build();
     }
 
@@ -88,7 +100,7 @@ public class AnnualExportJobConfig {
 
             exportFileService.prepareStagingDirectory(exportYear);
 
-            return org.springframework.batch.repeat.RepeatStatus.FINISHED;
+            return RepeatStatus.FINISHED;
         };
     }
 
@@ -116,6 +128,29 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
+    public Step eventExportStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            ExportProperties exportProperties,
+            @Qualifier("eventRecordReader")
+            JpaPagingItemReader<EventRecordEntity> eventRecordReader,
+            @Qualifier("eventRecordWriter")
+            FlatFileItemWriter<EventRecordEntity> eventRecordWriter
+    ) {
+        return new StepBuilder(
+                EVENT_STEP_NAME,
+                jobRepository
+        )
+                .<EventRecordEntity, EventRecordEntity>chunk(
+                        exportProperties.chunkSize(),
+                        transactionManager
+                )
+                .reader(eventRecordReader)
+                .writer(eventRecordWriter)
+                .build();
+    }
+
+    @Bean
     @StepScope
     public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
             EntityManagerFactory entityManagerFactory,
@@ -132,6 +167,35 @@ public class AnnualExportJobConfig {
                         where telemetryRecord.createdAt >= :from
                           and telemetryRecord.createdAt < :to
                         order by telemetryRecord.id
+                        """)
+                .parameterValues(
+                        yearRange(
+                                year,
+                                exportProperties.zoneId()
+                        )
+                )
+                .pageSize(exportProperties.chunkSize())
+                .saveState(true)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public JpaPagingItemReader<EventRecordEntity> eventRecordReader(
+            EntityManagerFactory entityManagerFactory,
+            ExportProperties exportProperties,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        return new JpaPagingItemReaderBuilder<EventRecordEntity>()
+                .name("eventRecordReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("""
+                        select eventRecord
+                        from EventRecordEntity eventRecord
+                        where eventRecord.createdAt >= :from
+                          and eventRecord.createdAt < :to
+                        order by eventRecord.id
                         """)
                 .parameterValues(
                         yearRange(
@@ -176,6 +240,45 @@ public class AnnualExportJobConfig {
                                 telemetryRecord.getTemperatureC(),
                                 telemetryRecord.getRpm(),
                                 telemetryRecord.getCreatedAt()
+                        )
+                )
+                .shouldDeleteIfExists(true)
+                .shouldDeleteIfEmpty(false)
+                .saveState(true)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public FlatFileItemWriter<EventRecordEntity> eventRecordWriter(
+            ExportFileService exportFileService,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        int exportYear = Math.toIntExact(year);
+
+        return new FlatFileItemWriterBuilder<EventRecordEntity>()
+                .name("eventRecordWriter")
+                .resource(
+                        new FileSystemResource(
+                                exportFileService.eventsStagingFile(
+                                        exportYear
+                                )
+                        )
+                )
+                .encoding(StandardCharsets.UTF_8.name())
+                .lineSeparator("\n")
+                .headerCallback(
+                        writer -> writer.write(EVENT_HEADER)
+                )
+                .lineAggregator(
+                        eventRecord -> CsvLineFormatter.formatRow(
+                                eventRecord.getId(),
+                                eventRecord.getDeviceId(),
+                                eventRecord.getGatewayTimestamp(),
+                                eventRecord.getSequenceNumber(),
+                                eventRecord.getEventType(),
+                                eventRecord.getCreatedAt()
                         )
                 )
                 .shouldDeleteIfExists(true)

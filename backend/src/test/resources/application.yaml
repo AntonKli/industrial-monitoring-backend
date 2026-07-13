@@ -4,6 +4,12 @@ spring:
     username: industrial_user
     password: industrial_password
 
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
 mqtt:
   broker-url: tcp://localhost:1883
   client-id: test-client
