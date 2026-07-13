@@ -4,6 +4,12 @@ spring:
     username: industrial_user
     password: industrial_password
 
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
 mqtt:
   broker-url: tcp://localhost:1883
   client-id: test-client
@@ -14,3 +20,10 @@ mqtt:
 
   subscriber:
     enabled: false
+
+export:
+  enabled: false
+  output-dir: target/test-exports
+  chunk-size: 10
+  cron: "0 0 2 1 1 *"
+  zone: Europe/Berlin

@@ -1,16 +1,24 @@
 package com.example.industrialmonitoring;
 
+import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.config.MqttProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import com.example.industrialmonitoring.config.MqttProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
-@EnableConfigurationProperties(MqttProperties.class)
 @SpringBootApplication
+@EnableScheduling
+@EnableConfigurationProperties({
+        MqttProperties.class,
+        ExportProperties.class
+})
 public class IndustrialMonitoringBackendApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(IndustrialMonitoringBackendApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(
+                IndustrialMonitoringBackendApplication.class,
+                args
+        );
+    }
 }

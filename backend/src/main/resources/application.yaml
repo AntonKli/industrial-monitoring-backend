@@ -17,6 +17,12 @@
     enabled: true
     locations: classpath:db/migration
 
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
 management:
   endpoints:
     web:
@@ -42,6 +48,13 @@ mqtt:
   device-id: ${MQTT_DEVICE_ID}
   username: ${MQTT_USERNAME}
   password: ${MQTT_PASSWORD}
+
+export:
+  enabled: ${EXPORT_ENABLED:true}
+  output-dir: ${EXPORT_OUTPUT_DIR:exports}
+  chunk-size: ${EXPORT_CHUNK_SIZE:100}
+  cron: "${EXPORT_CRON:0 0 2 1 1 *}"
+  zone: ${EXPORT_ZONE:Europe/Berlin}
 
 springdoc:
   swagger-ui:

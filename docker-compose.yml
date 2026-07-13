@@ -37,8 +37,15 @@ services:
       MQTT_DEVICE_ID: ${MQTT_DEVICE_ID}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
+      EXPORT_ENABLED: "${EXPORT_ENABLED:-true}"
+      EXPORT_OUTPUT_DIR: "${EXPORT_OUTPUT_DIR:-/app/exports}"
+      EXPORT_CHUNK_SIZE: "${EXPORT_CHUNK_SIZE:-100}"
+      EXPORT_CRON: "${EXPORT_CRON:-0 0 2 1 1 *}"
+      EXPORT_ZONE: "${EXPORT_ZONE:-Europe/Berlin}"
     ports:
       - "8080:8080"
+    volumes:
+      - ./exports:/app/exports
 
   prometheus:
     image: prom/prometheus:v3.0.1
