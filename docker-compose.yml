@@ -37,8 +37,11 @@ services:
       MQTT_DEVICE_ID: ${MQTT_DEVICE_ID}
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
+      EXPORT_OUTPUT_DIR: /app/exports
     ports:
       - "8080:8080"
+    volumes:
+      - ./exports:/app/exports
 
   prometheus:
     image: prom/prometheus:v3.0.1

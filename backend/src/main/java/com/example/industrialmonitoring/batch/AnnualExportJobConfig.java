@@ -1,0 +1,208 @@
+package com.example.industrialmonitoring.batch;
+
+import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.entity.TelemetryRecordEntity;
+import com.example.industrialmonitoring.export.CsvLineFormatter;
+import com.example.industrialmonitoring.service.ExportFileService;
+import jakarta.persistence.EntityManagerFactory;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.tasklet.Tasklet;
+import org.springframework.batch.item.database.JpaPagingItemReader;
+import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
+import org.springframework.batch.item.file.FlatFileItemWriter;
+import org.springframework.batch.item.file.builder.FlatFileItemWriterBuilder;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.Year;
+import java.time.ZoneId;
+import java.util.Map;
+
+@Configuration(proxyBeanMethods = false)
+public class AnnualExportJobConfig {
+
+    public static final String JOB_NAME = "annualMonitoringExportJob";
+
+    private static final String PREPARE_STEP_NAME =
+            "prepareAnnualExportStep";
+
+    private static final String TELEMETRY_STEP_NAME =
+            "telemetryExportStep";
+
+    private static final String TELEMETRY_HEADER =
+            "id,device_id,gateway_timestamp,sequence_number,"
+                    + "temperature_c,rpm,created_at";
+
+    @Bean
+    public Job annualMonitoringExportJob(
+            JobRepository jobRepository,
+            @Qualifier("prepareAnnualExportStep")
+            Step prepareAnnualExportStep,
+            @Qualifier("telemetryExportStep")
+            Step telemetryExportStep
+    ) {
+        return new JobBuilder(JOB_NAME, jobRepository)
+                .start(prepareAnnualExportStep)
+                .next(telemetryExportStep)
+                .build();
+    }
+
+    @Bean
+    public Step prepareAnnualExportStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            @Qualifier("prepareAnnualExportTasklet")
+            Tasklet prepareAnnualExportTasklet
+    ) {
+        return new StepBuilder(
+                PREPARE_STEP_NAME,
+                jobRepository
+        )
+                .tasklet(
+                        prepareAnnualExportTasklet,
+                        transactionManager
+                )
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public Tasklet prepareAnnualExportTasklet(
+            ExportFileService exportFileService,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        return (contribution, chunkContext) -> {
+            int exportYear = Math.toIntExact(year);
+
+            exportFileService.prepareStagingDirectory(exportYear);
+
+            return org.springframework.batch.repeat.RepeatStatus.FINISHED;
+        };
+    }
+
+    @Bean
+    public Step telemetryExportStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            ExportProperties exportProperties,
+            @Qualifier("telemetryRecordReader")
+            JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader,
+            @Qualifier("telemetryRecordWriter")
+            FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter
+    ) {
+        return new StepBuilder(
+                TELEMETRY_STEP_NAME,
+                jobRepository
+        )
+                .<TelemetryRecordEntity, TelemetryRecordEntity>chunk(
+                        exportProperties.chunkSize(),
+                        transactionManager
+                )
+                .reader(telemetryRecordReader)
+                .writer(telemetryRecordWriter)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
+            EntityManagerFactory entityManagerFactory,
+            ExportProperties exportProperties,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        return new JpaPagingItemReaderBuilder<TelemetryRecordEntity>()
+                .name("telemetryRecordReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("""
+                        select telemetryRecord
+                        from TelemetryRecordEntity telemetryRecord
+                        where telemetryRecord.createdAt >= :from
+                          and telemetryRecord.createdAt < :to
+                        order by telemetryRecord.id
+                        """)
+                .parameterValues(
+                        yearRange(
+                                year,
+                                exportProperties.zoneId()
+                        )
+                )
+                .pageSize(exportProperties.chunkSize())
+                .saveState(true)
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter(
+            ExportFileService exportFileService,
+            @Value("#{jobParameters['year']}")
+            Long year
+    ) {
+        int exportYear = Math.toIntExact(year);
+
+        return new FlatFileItemWriterBuilder<TelemetryRecordEntity>()
+                .name("telemetryRecordWriter")
+                .resource(
+                        new FileSystemResource(
+                                exportFileService.telemetryStagingFile(
+                                        exportYear
+                                )
+                        )
+                )
+                .encoding(StandardCharsets.UTF_8.name())
+                .lineSeparator("\n")
+                .headerCallback(
+                        writer -> writer.write(TELEMETRY_HEADER)
+                )
+                .lineAggregator(
+                        telemetryRecord -> CsvLineFormatter.formatRow(
+                                telemetryRecord.getId(),
+                                telemetryRecord.getDeviceId(),
+                                telemetryRecord.getGatewayTimestamp(),
+                                telemetryRecord.getSequenceNumber(),
+                                telemetryRecord.getTemperatureC(),
+                                telemetryRecord.getRpm(),
+                                telemetryRecord.getCreatedAt()
+                        )
+                )
+                .shouldDeleteIfExists(true)
+                .shouldDeleteIfEmpty(false)
+                .saveState(true)
+                .build();
+    }
+
+    private Map<String, Object> yearRange(
+            Long yearValue,
+            ZoneId zoneId
+    ) {
+        int year = Math.toIntExact(yearValue);
+
+        OffsetDateTime from = Year.of(year)
+                .atDay(1)
+                .atStartOfDay(zoneId)
+                .toOffsetDateTime();
+
+        OffsetDateTime to = Year.of(year + 1)
+                .atDay(1)
+                .atStartOfDay(zoneId)
+                .toOffsetDateTime();
+
+        return Map.of(
+                "from", from,
+                "to", to
+        );
+    }
+}
