@@ -1,6 +1,8 @@
 package com.example.industrialmonitoring.service;
 
 import com.example.industrialmonitoring.batch.AnnualExportJobConfig;
+import com.example.industrialmonitoring.exception.AnnualExportConflictException;
+import com.example.industrialmonitoring.exception.InvalidExportYearException;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
@@ -27,15 +29,17 @@ public class ExportJobService {
             Job annualMonitoringExportJob
     ) {
         this.jobLauncher = jobLauncher;
-        this.annualMonitoringExportJob = annualMonitoringExportJob;
+        this.annualMonitoringExportJob =
+                annualMonitoringExportJob;
     }
 
     public JobExecution startAnnualExport(int year) {
         validateYear(year);
 
-        JobParameters jobParameters = new JobParametersBuilder()
-                .addLong("year", (long) year)
-                .toJobParameters();
+        JobParameters jobParameters =
+                new JobParametersBuilder()
+                        .addLong("year", (long) year)
+                        .toJobParameters();
 
         try {
             return jobLauncher.run(
@@ -44,12 +48,21 @@ public class ExportJobService {
             );
         } catch (
                 JobExecutionAlreadyRunningException
-                | JobRestartException
-                | JobInstanceAlreadyCompleteException
-                | JobParametersInvalidException exception
+                        | JobRestartException
+                        | JobInstanceAlreadyCompleteException exception
         ) {
+            throw new AnnualExportConflictException(
+                    "Annual export for year "
+                            + year
+                            + " is already running, completed "
+                            + "or cannot currently be restarted",
+                    exception
+            );
+        } catch (JobParametersInvalidException exception) {
             throw new IllegalStateException(
-                    "Could not start annual export for year " + year,
+                    "Annual export job parameters are invalid "
+                            + "for year "
+                            + year,
                     exception
             );
         }
@@ -59,7 +72,7 @@ public class ExportJobService {
         int currentYear = Year.now().getValue();
 
         if (year < 2000 || year > currentYear) {
-            throw new IllegalArgumentException(
+            throw new InvalidExportYearException(
                     "Export year must be between 2000 and "
                             + currentYear
             );

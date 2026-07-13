@@ -1,18 +1,23 @@
 package com.example.industrialmonitoring.service;
 
+import com.example.industrialmonitoring.exception.AnnualExportConflictException;
+import com.example.industrialmonitoring.exception.InvalidExportYearException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
+import org.springframework.batch.core.JobParametersInvalidException;
 import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteException;
 
 import java.time.Year;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -38,19 +43,21 @@ class ExportJobServiceTest {
     }
 
     @Test
-    void shouldStartAnnualExportWithYearParameter() throws Exception {
-        int exportYear = 2020;
-        JobExecution expectedExecution = mock(JobExecution.class);
+    void shouldStartAnnualExportWithYearParameter()
+            throws Exception {
+
+        JobExecution jobExecution =
+                mock(JobExecution.class);
 
         when(
                 jobLauncher.run(
                         eq(annualMonitoringExportJob),
                         any(JobParameters.class)
                 )
-        ).thenReturn(expectedExecution);
+        ).thenReturn(jobExecution);
 
-        JobExecution actualExecution =
-                exportJobService.startAnnualExport(exportYear);
+        JobExecution result =
+                exportJobService.startAnnualExport(2025);
 
         ArgumentCaptor<JobParameters> parametersCaptor =
                 ArgumentCaptor.forClass(JobParameters.class);
@@ -60,52 +67,116 @@ class ExportJobServiceTest {
                 parametersCaptor.capture()
         );
 
-        JobParameters capturedParameters =
-                parametersCaptor.getValue();
-
         assertEquals(
-                Long.valueOf(exportYear),
-                capturedParameters.getLong("year")
+                2025L,
+                parametersCaptor.getValue().getLong("year")
         );
 
-        assertSame(
-                expectedExecution,
-                actualExecution
-        );
+        assertSame(jobExecution, result);
     }
 
     @Test
-    void shouldRejectFutureExportYear() {
-        int currentYear = Year.now().getValue();
-        int futureYear = currentYear + 1;
+    void shouldRejectYearBeforeMinimum() {
+        InvalidExportYearException exception =
+                assertThrows(
+                        InvalidExportYearException.class,
+                        () -> exportJobService
+                                .startAnnualExport(1999)
+                );
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> exportJobService.startAnnualExport(futureYear)
-        );
-
-        assertEquals(
-                "Export year must be between 2000 and " + currentYear,
+        assertTrue(
                 exception.getMessage()
+                        .contains("between 2000")
         );
 
         verifyNoInteractions(jobLauncher);
     }
 
     @Test
-    void shouldRejectExportYearBefore2000() {
-        int currentYear = Year.now().getValue();
+    void shouldRejectFutureYear() {
+        int futureYear =
+                Year.now().getValue() + 1;
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> exportJobService.startAnnualExport(1999)
-        );
+        InvalidExportYearException exception =
+                assertThrows(
+                        InvalidExportYearException.class,
+                        () -> exportJobService
+                                .startAnnualExport(futureYear)
+                );
 
-        assertEquals(
-                "Export year must be between 2000 and " + currentYear,
+        assertTrue(
                 exception.getMessage()
+                        .contains(
+                                String.valueOf(
+                                        Year.now().getValue()
+                                )
+                        )
         );
 
         verifyNoInteractions(jobLauncher);
+    }
+
+    @Test
+    void shouldTranslateCompletedJobIntoConflictException()
+            throws Exception {
+
+        when(
+                jobLauncher.run(
+                        eq(annualMonitoringExportJob),
+                        any(JobParameters.class)
+                )
+        ).thenThrow(
+                new JobInstanceAlreadyCompleteException(
+                        "Job instance already completed"
+                )
+        );
+
+        AnnualExportConflictException exception =
+                assertThrows(
+                        AnnualExportConflictException.class,
+                        () -> exportJobService
+                                .startAnnualExport(2022)
+                );
+
+        assertTrue(
+                exception.getMessage().contains("2022")
+        );
+
+        assertTrue(
+                exception.getCause()
+                        instanceof JobInstanceAlreadyCompleteException
+        );
+    }
+
+    @Test
+    void shouldTreatInvalidBatchParametersAsTechnicalFailure()
+            throws Exception {
+
+        when(
+                jobLauncher.run(
+                        eq(annualMonitoringExportJob),
+                        any(JobParameters.class)
+                )
+        ).thenThrow(
+                new JobParametersInvalidException(
+                        "Invalid job parameters"
+                )
+        );
+
+        IllegalStateException exception =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> exportJobService
+                                .startAnnualExport(2021)
+                );
+
+        assertTrue(
+                exception.getMessage().contains("2021")
+        );
+
+        assertTrue(
+                exception.getCause()
+                        instanceof JobParametersInvalidException
+        );
     }
 }
