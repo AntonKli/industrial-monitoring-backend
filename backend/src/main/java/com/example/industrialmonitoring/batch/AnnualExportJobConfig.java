@@ -346,131 +346,155 @@ public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
 }
 
     @Bean
-    @StepScope
-    public FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
+@StepScope
+public FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-        return new FlatFileItemWriterBuilder<TelemetryRecordEntity>()
-                .name("telemetryRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.telemetryStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(TELEMETRY_HEADER)
-                )
-                .lineAggregator(
-                        telemetryRecord -> CsvLineFormatter.formatRow(
-                                telemetryRecord.getId(),
-                                telemetryRecord.getDeviceId(),
-                                telemetryRecord.getGatewayTimestamp(),
-                                telemetryRecord.getSequenceNumber(),
-                                telemetryRecord.getTemperatureC(),
-                                telemetryRecord.getRpm(),
-                                telemetryRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
-
-    @Bean
-    @StepScope
-    public FlatFileItemWriter<EventRecordEntity> eventRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
-
-        return new FlatFileItemWriterBuilder<EventRecordEntity>()
-                .name("eventRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.eventsStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(EVENT_HEADER)
-                )
-                .lineAggregator(
-                        eventRecord -> CsvLineFormatter.formatRow(
-                                eventRecord.getId(),
-                                eventRecord.getDeviceId(),
-                                eventRecord.getGatewayTimestamp(),
-                                eventRecord.getSequenceNumber(),
-                                eventRecord.getEventType(),
-                                eventRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
+    return new FlatFileItemWriterBuilder<TelemetryRecordEntity>()
+            .name("telemetryRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.telemetryStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(TELEMETRY_HEADER)
+            )
+            .lineAggregator(
+                    telemetryRecord -> CsvLineFormatter.formatRow(
+                            telemetryRecord.getId(),
+                            telemetryRecord.getDeviceId(),
+                            telemetryRecord.getGatewayTimestamp(),
+                            telemetryRecord.getSequenceNumber(),
+                            telemetryRecord.getTemperatureC(),
+                            telemetryRecord.getRpm(),
+                            telemetryRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public FlatFileItemWriter<HealthRecordEntity> healthRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
+@StepScope
+public FlatFileItemWriter<EventRecordEntity> eventRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-        return new FlatFileItemWriterBuilder<HealthRecordEntity>()
-                .name("healthRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.healthStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(HEALTH_HEADER)
-                )
-                .lineAggregator(
-                        healthRecord -> CsvLineFormatter.formatRow(
-                                healthRecord.getId(),
-                                healthRecord.getDeviceId(),
-                                healthRecord.getGatewayTimestamp(),
-                                healthRecord.getSequenceNumber(),
-                                healthRecord.getState(),
-                                healthRecord.getMqttConnected(),
-                                healthRecord.getPubLastOk(),
-                                healthRecord.getBufferFill(),
-                                healthRecord.getBufferDrops(),
-                                healthRecord.getDiagUptimeS(),
-                                healthRecord.getDiagReconnects(),
-                                healthRecord.getDiagPubOk(),
-                                healthRecord.getDiagPubFail(),
-                                healthRecord.getDiagLastError(),
-                                healthRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
+    return new FlatFileItemWriterBuilder<EventRecordEntity>()
+            .name("eventRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.eventsStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(EVENT_HEADER)
+            )
+            .lineAggregator(
+                    eventRecord -> CsvLineFormatter.formatRow(
+                            eventRecord.getId(),
+                            eventRecord.getDeviceId(),
+                            eventRecord.getGatewayTimestamp(),
+                            eventRecord.getSequenceNumber(),
+                            eventRecord.getEventType(),
+                            eventRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
+
+    @Bean
+@StepScope
+public FlatFileItemWriter<HealthRecordEntity> healthRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
+
+    return new FlatFileItemWriterBuilder<HealthRecordEntity>()
+            .name("healthRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.healthStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(HEALTH_HEADER)
+            )
+            .lineAggregator(
+                    healthRecord -> CsvLineFormatter.formatRow(
+                            healthRecord.getId(),
+                            healthRecord.getDeviceId(),
+                            healthRecord.getGatewayTimestamp(),
+                            healthRecord.getSequenceNumber(),
+                            healthRecord.getState(),
+                            healthRecord.getMqttConnected(),
+                            healthRecord.getPubLastOk(),
+                            healthRecord.getBufferFill(),
+                            healthRecord.getBufferDrops(),
+                            healthRecord.getDiagUptimeS(),
+                            healthRecord.getDiagReconnects(),
+                            healthRecord.getDiagPubOk(),
+                            healthRecord.getDiagPubFail(),
+                            healthRecord.getDiagLastError(),
+                            healthRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
     private ExportPeriod exportPeriod(
         String fromDate,
         String toDateExclusive,
