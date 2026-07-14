@@ -29,8 +29,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
-import java.time.Year;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
@@ -247,91 +245,105 @@ public Tasklet finalizeAnnualExportTasklet(
     }
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<TelemetryRecordEntity>()
-                .name("telemetryRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select telemetryRecord
-                        from TelemetryRecordEntity telemetryRecord
-                        where telemetryRecord.createdAt >= :from
-                          and telemetryRecord.createdAt < :to
-                        order by telemetryRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
+@StepScope
+public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<TelemetryRecordEntity>()
+            .name("telemetryRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select telemetryRecord
+                    from TelemetryRecordEntity telemetryRecord
+                    where telemetryRecord.createdAt >= :from
+                      and telemetryRecord.createdAt < :to
+                    order by telemetryRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
+    @Bean
+@StepScope
+public JpaPagingItemReader<EventRecordEntity> eventRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<EventRecordEntity>()
+            .name("eventRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select eventRecord
+                    from EventRecordEntity eventRecord
+                    where eventRecord.createdAt >= :from
+                      and eventRecord.createdAt < :to
+                    order by eventRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<EventRecordEntity> eventRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<EventRecordEntity>()
-                .name("eventRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select eventRecord
-                        from EventRecordEntity eventRecord
-                        where eventRecord.createdAt >= :from
-                          and eventRecord.createdAt < :to
-                        order by eventRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
-
-    @Bean
-    @StepScope
-    public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<HealthRecordEntity>()
-                .name("healthRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select healthRecord
-                        from HealthRecordEntity healthRecord
-                        where healthRecord.createdAt >= :from
-                          and healthRecord.createdAt < :to
-                        order by healthRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
+@StepScope
+public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<HealthRecordEntity>()
+            .name("healthRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select healthRecord
+                    from HealthRecordEntity healthRecord
+                    where healthRecord.createdAt >= :from
+                      and healthRecord.createdAt < :to
+                    order by healthRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
 
     @Bean
     @StepScope
@@ -470,25 +482,20 @@ public Tasklet finalizeAnnualExportTasklet(
             ZoneId.of(zoneId)
     );
 }
-    private Map<String, Object> yearRange(
-            Long yearValue,
-            ZoneId zoneId
-    ) {
-        int year = Math.toIntExact(yearValue);
+    private Map<String, Object> periodRange(
+        String fromDate,
+        String toDateExclusive,
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-        OffsetDateTime from = Year.of(year)
-                .atDay(1)
-                .atStartOfDay(zoneId)
-                .toOffsetDateTime();
-
-        OffsetDateTime to = Year.of(year + 1)
-                .atDay(1)
-                .atStartOfDay(zoneId)
-                .toOffsetDateTime();
-
-        return Map.of(
-                "from", from,
-                "to", to
-        );
-    }
+    return Map.of(
+            "from", period.fromTimestamp(),
+            "to", period.toTimestamp()
+    );
+}
 }
