@@ -22,6 +22,8 @@ import java.time.Year;
 @Service
 public class ExportJobService {
 
+    private static final int MINIMUM_EXPORT_YEAR = 2000;
+
     private final JobLauncher jobLauncher;
     private final Job annualMonitoringExportJob;
     private final ExportProperties exportProperties;
@@ -39,15 +41,19 @@ public class ExportJobService {
     }
 
     public JobExecution startAnnualExport(int year) {
-        validateYear(year);
+        validateCompletedYear(year);
 
         ExportPeriod period = ExportPeriod.forYear(
                 year,
                 exportProperties.zoneId()
         );
 
+        return startExport(period);
+    }
+
+    private JobExecution startExport(ExportPeriod period) {
         JobParameters jobParameters =
-                createTransitionalJobParameters(year, period);
+                createJobParameters(period);
 
         try {
             return jobLauncher.run(
@@ -60,63 +66,59 @@ public class ExportJobService {
                 | JobInstanceAlreadyCompleteException exception
         ) {
             throw new AnnualExportConflictException(
-                    "Annual export for year "
-                            + year
+                    "Export for period "
+                            + period.exportKey()
                             + " is already running, completed "
                             + "or cannot currently be restarted",
                     exception
             );
         } catch (JobParametersInvalidException exception) {
             throw new IllegalStateException(
-                    "Annual export job parameters are invalid "
-                            + "for year "
-                            + year,
+                    "Export job parameters are invalid for period "
+                            + period.exportKey(),
                     exception
             );
         }
     }
 
-    private JobParameters createTransitionalJobParameters(
-            int year,
+    private JobParameters createJobParameters(
             ExportPeriod period
     ) {
         return new JobParametersBuilder()
-                /*
-                 * The existing batch configuration still uses year.
-                 * It remains the identifying parameter during this
-                 * transitional implementation step.
-                 */
-                .addLong("year", (long) year)
-
-                /*
-                 * These values prepare the migration to flexible
-                 * ranges but are temporarily non-identifying.
-                 */
                 .addString(
                         "fromDate",
                         period.fromDate().toString(),
-                        false
+                        true
                 )
                 .addString(
                         "toDateExclusive",
                         period.toDateExclusive().toString(),
-                        false
+                        true
                 )
                 .addString(
                         "zoneId",
                         period.zoneId().getId(),
-                        false
+                        true
                 )
                 .toJobParameters();
     }
 
-    private void validateYear(int year) {
-        int currentYear = Year.now().getValue();
+    private void validateCompletedYear(int year) {
+        int latestCompletedYear = Year.now(
+                exportProperties.zoneId()
+        ).getValue() - 1;
 
-        if (year < 2000 || year > currentYear) {
+        if (
+                year < MINIMUM_EXPORT_YEAR
+                        || year > latestCompletedYear
+        ) {
             throw new InvalidExportYearException(
-                    "Export year must be between 2000 and "
-                            + currentYear
+                    "Export year must be between "
+                            + MINIMUM_EXPORT_YEAR
+                            + " and "
+                            + latestCompletedYear
+                            + ". Use a range export for "
+                            + "the current year."
             );
         }
     }
