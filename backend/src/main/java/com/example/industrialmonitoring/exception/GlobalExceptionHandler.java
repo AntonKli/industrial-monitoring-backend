@@ -59,6 +59,18 @@ public class GlobalExceptionHandler {
 
         return problemDetail;
     }
+    @ExceptionHandler(InvalidExportPeriodException.class)
+public ProblemDetail handleInvalidExportPeriod(
+        InvalidExportPeriodException exception
+) {
+    ProblemDetail problemDetail =
+            ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+
+    problemDetail.setTitle("Invalid export period");
+    problemDetail.setDetail(exception.getMessage());
+
+    return problemDetail;
+}
 
     @ExceptionHandler(AnnualExportConflictException.class)
     public ProblemDetail handleAnnualExportConflict(
@@ -67,7 +79,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problemDetail =
                 ProblemDetail.forStatus(HttpStatus.CONFLICT);
 
-        problemDetail.setTitle("Annual export conflict");
+        problemDetail.setTitle("Export conflict");
         problemDetail.setDetail(exception.getMessage());
 
         return problemDetail;

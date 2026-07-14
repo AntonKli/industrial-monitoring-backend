@@ -1,8 +1,6 @@
 # Industrial Monitoring Backend
 
-A Spring Boot backend for ingesting, validating, storing, monitoring and exporting data from industrial edge devices.
-
-The backend is part of an industrial monitoring setup and integrates with a custom MQTT edge gateway implemented in CODESYS.
+A Java 21 and Spring Boot 3.5.15 backend that receives telemetry, event and health data from a CODESYS edge gateway over MQTT, persists it in PostgreSQL, exposes REST and Prometheus endpoints, and creates scheduled or on-demand CSV exports with Spring Batch.
 
 ## Related Project
 
@@ -18,9 +16,9 @@ The backend subscribes to the configured MQTT topics, validates incoming message
 
 The stored information is available through REST APIs and can be monitored with Spring Boot Actuator, Prometheus and Grafana.
 
-A scheduled Spring Batch job creates annual CSV archives for telemetry, event and health records. The records are processed in configurable chunks and initially written to a staging directory. The completed export is published only after every batch step has finished successfully.
+A Spring Batch job creates CSV archives for telemetry, event and health records. Exports can cover a completed calendar year or a manually selected date range. The records are processed in configurable chunks and initially written to a staging directory. The completed export is published only after every batch step has finished successfully.
 
-The complete data flow has been tested with a CODESYS-based Industrial Edge Gateway publishing MQTT messages through Eclipse Mosquitto into the Spring Boot backend.
+The end-to-end path from the CODESYS gateway through Eclipse Mosquitto into the backend was validated manually. The automated test suite focuses on ingestion services, persistence, REST controllers, scheduling and export behavior.
 
 ---
 
@@ -58,7 +56,7 @@ Spring Boot Backend
         +--------------------> Spring Batch
                                     |
                                     v
-                              Annual CSV Export
+                               CSV Export
 ```
 
 ---
@@ -70,20 +68,16 @@ Spring Boot Backend
 - Automatic device registration
 - PostgreSQL persistence with Spring Data JPA and Hibernate
 - Database versioning with Flyway
-- REST APIs with pagination and time-range filtering
+- Telemetry endpoints with pagination and time-range filtering
+- Device, event and health query endpoints
 - OpenAPI documentation and Swagger UI
 - Spring Boot Actuator endpoints
-- Custom Prometheus metrics
-- Grafana monitoring dashboard
-- Scheduled annual CSV exports with Spring Batch
-- Chunk-based processing for larger datasets
-- Persistent Spring Batch job metadata
-- Staging and publication workflow for complete exports
-- Manual REST endpoint for starting annual exports
-- Duplicate export protection
-- Docker Compose deployment
-- Unit and integration tests
-- Continuous integration with GitHub Actions
+- Custom Prometheus ingestion metrics and Grafana monitoring
+- Scheduled yearly and manual date-range CSV exports, including cross-year ranges
+- Chunk-based Spring Batch processing with persistent metadata and duplicate protection
+- Staging-to-publication workflow that exposes only completed exports
+- Reproducible local development stack with Docker Compose
+- Automated tests and continuous integration with GitHub Actions
 
 ---
 
@@ -92,7 +86,7 @@ Spring Boot Backend
 ### Backend
 
 - Java 21
-- Spring Boot 3.5
+- Spring Boot 3.5.15
 - Spring Batch
 - Spring Data JPA
 - Hibernate
@@ -239,17 +233,27 @@ GET /api/health/latest
 GET /api/health/device/{deviceId}
 ```
 
-### Annual Exports
+### Export APIs
 
 ```text
 POST /api/exports/yearly?year={year}
+POST /api/exports/range?from={from}&to={to}
 ```
 
 ---
 
-## Scheduled Annual CSV Export
+## CSV Exports with Spring Batch
 
-The backend uses Spring Batch to create yearly application-level archives of stored telemetry, event and health records.
+The backend uses Spring Batch to create application-level CSV archives of stored telemetry, event and health records.
+
+Two export modes are available:
+
+- Scheduled or manually triggered exports of completed calendar years
+- Manually triggered exports for freely selected date ranges
+
+Both modes use the same Spring Batch job, readers, writers, staging workflow and publication process.
+
+### Scheduled Annual Export
 
 The default scheduler runs every January 1 at 02:00 in the `Europe/Berlin` time zone and exports the complete previous calendar year.
 
@@ -257,195 +261,254 @@ Example:
 
 ```text
 Scheduler execution: January 1, 2027 at 02:00
-Export year:         2026
-Export range:        January 1, 2026 until January 1, 2027
+Export range:        2026-01-01 until 2027-01-01
 ```
 
-The export range is based on the backend persistence timestamp `createdAt`:
+The end date is exclusive.
+
+The selected records therefore satisfy:
 
 ```text
-createdAt >= beginning of export year
-createdAt <  beginning of following year
+createdAt >= 2026-01-01T00:00:00
+createdAt <  2027-01-01T00:00:00
 ```
+
+Only completed calendar years can be started through the yearly REST endpoint. Data from the current year can instead be exported through the range endpoint.
+
+### Flexible Range Export
+
+A manual export can use any valid date range, including a range that crosses calendar-year boundaries.
+
+Example:
+
+```text
+from: 2025-10-01
+to:   2026-04-01
+```
+
+This exports records from October 1, 2025 up to, but not including, April 1, 2026.
+
+The range uses half-open interval semantics:
+
+```text
+createdAt >= from
+createdAt <  to
+```
+
+Using an exclusive end date avoids ambiguous values such as `23:59:59.999999`.
+
+Valid ranges must meet the following conditions:
+
+- `from` must be before `to`
+- `from` must not be earlier than `2000-01-01`
+- `to` must not be later than the next calendar day in the configured export time zone
+
+Allowing the next day as the exclusive end makes it possible to include the complete current day.
 
 ### Batch Job Flow
 
 ```text
 prepareAnnualExportStep
-          |
-          v
+        |
+        v
 telemetryExportStep
-          |
-          v
+        |
+        v
 eventExportStep
-          |
-          v
+        |
+        v
 healthExportStep
-          |
-          v
+        |
+        v
 finalizeAnnualExportStep
 ```
 
-### Batch Steps
-
 #### `prepareAnnualExportStep`
 
-Creates the staging directory for the selected export year.
+Creates the staging directory for the selected export period.
 
 #### `telemetryExportStep`
 
-Reads telemetry records in pages and writes them to a CSV file.
+Reads telemetry records from PostgreSQL in configurable chunks and writes them to CSV.
 
 #### `eventExportStep`
 
-Reads event records in pages and writes them to a CSV file.
+Reads event records from PostgreSQL in configurable chunks and writes them to CSV.
 
 #### `healthExportStep`
 
-Reads health records in pages and writes them to a CSV file.
+Reads health records from PostgreSQL in configurable chunks and writes them to CSV.
 
 #### `finalizeAnnualExportStep`
 
-Publishes the annual export only after every previous step has completed successfully.
+Publishes the export only after every previous step has completed successfully.
 
----
+### Staging and Publication
 
-## Staging and Publication
-
-CSV files are initially written to:
-
-```text
-exports/.staging/{year}/
-```
-
-After every export step succeeds, the staging directory is moved to:
-
-```text
-exports/{year}/
-```
-
-This prevents incomplete exports from appearing in the final export directory.
-
-A completed export contains:
+Files are initially written to a staging directory:
 
 ```text
 exports/
-└── 2026/
-    ├── telemetry-export-2026.csv
-    ├── events-export-2026.csv
-    └── health-export-2026.csv
+└── .staging/
+    └── 2025-10-01_to_2026-04-01/
+        ├── telemetry-export-2025-10-01_to_2026-04-01.csv
+        ├── events-export-2025-10-01_to_2026-04-01.csv
+        └── health-export-2025-10-01_to_2026-04-01.csv
 ```
+
+After all batch steps complete successfully, the directory is published:
+
+```text
+exports/
+└── 2025-10-01_to_2026-04-01/
+    ├── telemetry-export-2025-10-01_to_2026-04-01.csv
+    ├── events-export-2025-10-01_to_2026-04-01.csv
+    └── health-export-2025-10-01_to_2026-04-01.csv
+```
+
+A complete calendar-year export keeps the shorter year-based name:
+
+```text
+exports/
+└── 2025/
+    ├── telemetry-export-2025.csv
+    ├── events-export-2025.csv
+    └── health-export-2025.csv
+```
+
+Incomplete exports are never exposed as completed archives.
 
 The generated `exports` directory is excluded from Git.
 
----
+### Chunk-Based Processing
 
-## Chunk-Based Processing
+Records are read and written in configurable chunks instead of loading an entire export period into memory.
 
-The configured chunk size determines how many database records are processed within one Spring Batch transaction.
+The chunk size can be configured through:
 
-```dotenv
-EXPORT_CHUNK_SIZE=100
+```text
+EXPORT_CHUNK_SIZE
 ```
 
-The job reads records page by page instead of loading the complete annual dataset into application memory.
+### Spring Batch Metadata and Idempotency
 
----
+Spring Batch stores job, execution and step metadata in PostgreSQL.
 
-## Spring Batch Metadata
+The identifying job parameters are:
 
-Spring Batch stores job and step information in PostgreSQL.
+```text
+fromDate
+toDateExclusive
+zoneId
+```
 
-The metadata includes:
+Starting the same period again therefore refers to the same Spring Batch job instance.
 
-- Job instances
-- Job executions
-- Job parameters
-- Step executions
-- Execution status
-- Read and write counts
-- Restart information
-- Execution contexts
+A partial current-year export does not block a later complete yearly export because the two exports use different date ranges.
 
-The export year is an identifying job parameter.
+### Manual Yearly Export
 
-A successfully completed export therefore cannot accidentally be started again with the same year.
+Only completed calendar years are accepted.
 
----
-
-## Manual Annual Export
-
-An annual export can also be started manually through the REST API.
-
-### PowerShell
+#### PowerShell
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri "http://localhost:8080/api/exports/yearly?year=2026" |
+  -Uri "http://localhost:8080/api/exports/yearly?year=2025" |
   ConvertTo-Json
 ```
 
-### cURL
+#### curl
 
 ```bash
 curl -X POST \
-  "http://localhost:8080/api/exports/yearly?year=2026"
+  "http://localhost:8080/api/exports/yearly?year=2025"
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
   "executionId": 1,
   "jobName": "annualMonitoringExportJob",
-  "year": 2026,
+  "year": 2025,
   "status": "COMPLETED"
 }
 ```
 
----
+### Manual Range Export
+
+#### PowerShell
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01" |
+  ConvertTo-Json
+```
+
+#### curl
+
+```bash
+curl -X POST \
+  "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01"
+```
+
+#### Successful Response
+
+```json
+{
+  "executionId": 2,
+  "jobName": "annualMonitoringExportJob",
+  "fromDate": "2025-10-01",
+  "toDateExclusive": "2026-04-01",
+  "status": "COMPLETED"
+}
+```
 
 ## Export Error Responses
 
 ### Invalid Export Year
 
-A year before 2000 or after the current year returns:
+A year before 2000 or later than the most recently completed calendar year returns HTTP `400 Bad Request`.
 
-```text
-HTTP 400 Bad Request
-Content-Type: application/problem+json
-```
-
-Example response:
+Example when the current year is 2026:
 
 ```json
 {
   "type": "about:blank",
   "title": "Invalid export year",
   "status": 400,
-  "detail": "Export year must be between 2000 and 2026",
+  "detail": "Export year must be between 2000 and 2025. Use a range export for the current year.",
   "instance": "/api/exports/yearly"
 }
 ```
 
-### Existing or Running Export
+### Invalid Export Period
 
-An export that is already running, completed or currently not restartable returns:
-
-```text
-HTTP 409 Conflict
-Content-Type: application/problem+json
-```
-
-Example response:
+An empty, reversed, pre-2000 or excessively future-dated range returns HTTP `400 Bad Request`.
 
 ```json
 {
   "type": "about:blank",
-  "title": "Annual export conflict",
+  "title": "Invalid export period",
+  "status": 400,
+  "detail": "Export start date must be before the exclusive end date",
+  "instance": "/api/exports/range"
+}
+```
+
+### Export Conflict
+
+A running, completed or currently non-restartable export with the same identifying period returns HTTP `409 Conflict`.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Export conflict",
   "status": 409,
-  "detail": "Annual export for year 2022 is already running, completed or cannot currently be restarted",
+  "detail": "Export for period 2022 is already running, completed or cannot currently be restarted",
   "instance": "/api/exports/yearly"
 }
 ```
@@ -456,7 +519,7 @@ Example response:
 
 ## Export Configuration
 
-The annual export is configured through environment variables.
+CSV export processing and the annual scheduler are configured through environment variables.
 
 | Variable | Default | Description |
 |---|---:|---|
@@ -483,14 +546,14 @@ Month:        January
 Day of week:  any
 ```
 
-When the backend runs through Docker Compose, `/app/exports` is mapped to the local project directory `./exports`:
+The application default for `EXPORT_OUTPUT_DIR` is `exports`. When the backend runs through Docker Compose, the directory is available as `/app/exports` and mapped to the local project directory `./exports`:
 
 ```yaml
 volumes:
   - ./exports:/app/exports
 ```
 
-Recommended Docker value:
+Explicit Docker value:
 
 ```dotenv
 EXPORT_OUTPUT_DIR=/app/exports
@@ -582,12 +645,6 @@ cp .env.example .env
 Replace the placeholder credentials in the local `.env` file.
 
 Keep local credentials in `.env`. This file is excluded from Git.
-
-For Docker-based exports, use:
-
-```dotenv
-EXPORT_OUTPUT_DIR=/app/exports
-```
 
 ### Build and Start
 
@@ -683,7 +740,7 @@ V1  Application tables
 V2  Spring Batch metadata tables and sequences
 ```
 
-Hibernate validates the existing database schema and does not create or modify the production schema automatically.
+Hibernate validates the Flyway-managed schema and does not create or update database tables automatically.
 
 ---
 
@@ -694,7 +751,6 @@ The project contains unit and integration tests for the main backend workflows.
 ### Application Context Tests
 
 - Spring Boot application startup
-- Configuration binding
 - Flyway migrations
 - PostgreSQL connectivity
 
@@ -704,32 +760,30 @@ The project contains unit and integration tests for the main backend workflows.
 - PostgreSQL interaction
 - Database queries
 
-### MQTT Ingestion Integration Tests
+### Ingestion Service Integration Tests
 
-- Telemetry ingestion
-- Event ingestion
-- Health ingestion
+- Telemetry, event and health processing
 - Automatic device registration
-- Persistence verification
+- PostgreSQL persistence verification
 
-### REST API Tests
+These automated tests invoke the ingestion services directly. They do not start Mosquitto or publish MQTT packets over the network.
 
-- Telemetry endpoints
-- Pagination
-- Time-range filtering
-- Event endpoints
-- Health endpoints
-- Export validation
+### REST Controller Tests
+
+- Telemetry, event and health endpoints
+- Pagination and telemetry time-range filtering
+- Yearly and flexible range export endpoints
 - HTTP 400 error responses
 - HTTP 409 conflict responses
 
 ### Export Tests
 
+- Annual and flexible export-period calculation
 - Export file and directory management
-- CSV escaping
-- Spreadsheet-formula protection
-- Export job parameter validation
-- Spring Batch conflict translation
+- CSV escaping and spreadsheet-formula protection
+- Identifying Spring Batch job parameters
+- Duplicate and conflict handling
+- Range validation
 - Scheduler calculation of the previous year
 - Scheduler error handling
 
@@ -753,18 +807,16 @@ cd backend
 
 ## Continuous Integration
 
-GitHub Actions automatically runs the test suite for pushes and pull requests targeting the main branch.
+GitHub Actions runs the Maven test suite for pushes and pull requests targeting the `main` branch.
 
-The pipeline validates:
+The workflow compiles the backend and executes automated tests covering:
 
-- Maven build
-- Spring Boot application context
-- Unit tests
-- Integration tests
-- PostgreSQL Testcontainers
-- MQTT ingestion
-- REST API behavior
-- Prometheus metrics
+- Spring Boot application context startup
+- Flyway and PostgreSQL Testcontainers integration
+- Repository and ingestion-service behavior
+- REST controller behavior
+- Export-period, file-management and scheduler logic
+- Validation and HTTP error handling
 
 ---
 
@@ -802,26 +854,3 @@ industrial-monitoring-backend/
 ├── docker-compose.yml
 └── README.md
 ```
-
----
-
-## Current Capabilities
-
-- End-to-end CODESYS-to-backend MQTT pipeline
-- Telemetry, event and health ingestion
-- Automatic device registration
-- PostgreSQL persistence
-- Versioned database migrations
-- REST access to stored operational data
-- Pagination and time-range filtering
-- OpenAPI documentation
-- Application health and metrics endpoints
-- Prometheus and Grafana monitoring
-- Scheduled annual CSV archiving
-- Manual annual export execution
-- Persistent Spring Batch metadata
-- Duplicate export protection
-- Staging and publication workflow
-- Docker-based deployment
-- Automated testing
-- Continuous integration

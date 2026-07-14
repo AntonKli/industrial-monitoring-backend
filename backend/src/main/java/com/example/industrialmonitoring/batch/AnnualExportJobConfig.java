@@ -1,5 +1,6 @@
 package com.example.industrialmonitoring.batch;
 
+import com.example.industrialmonitoring.export.ExportPeriod;
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.entity.EventRecordEntity;
 import com.example.industrialmonitoring.entity.HealthRecordEntity;
@@ -26,9 +27,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.transaction.PlatformTransactionManager;
 
+
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
-import java.time.Year;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
 
@@ -126,36 +127,53 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
-    @StepScope
-    public Tasklet prepareAnnualExportTasklet(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return (contribution, chunkContext) -> {
-            int exportYear = Math.toIntExact(year);
+@StepScope
+public Tasklet prepareAnnualExportTasklet(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return (contribution, chunkContext) -> {
+        ExportPeriod period = exportPeriod(
+                fromDate,
+                toDateExclusive,
+                zoneId
+        );
 
-            exportFileService.prepareStagingDirectory(exportYear);
+        exportFileService.prepareStagingDirectory(period);
 
-            return RepeatStatus.FINISHED;
-        };
+        return RepeatStatus.FINISHED;
+    };
+
     }
 
     @Bean
-    @StepScope
-    public Tasklet finalizeAnnualExportTasklet(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return (contribution, chunkContext) -> {
-            int exportYear = Math.toIntExact(year);
+@StepScope
+public Tasklet finalizeAnnualExportTasklet(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return (contribution, chunkContext) -> {
+        ExportPeriod period = exportPeriod(
+                fromDate,
+                toDateExclusive,
+                zoneId
+        );
 
-            exportFileService.publish(exportYear);
+        exportFileService.publish(period);
 
-            return RepeatStatus.FINISHED;
-        };
-    }
+        return RepeatStatus.FINISHED;
+    };
+}
 
     @Bean
     public Step telemetryExportStep(
@@ -227,238 +245,281 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<TelemetryRecordEntity>()
-                .name("telemetryRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select telemetryRecord
-                        from TelemetryRecordEntity telemetryRecord
-                        where telemetryRecord.createdAt >= :from
-                          and telemetryRecord.createdAt < :to
-                        order by telemetryRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
+@StepScope
+public JpaPagingItemReader<TelemetryRecordEntity> telemetryRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<TelemetryRecordEntity>()
+            .name("telemetryRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select telemetryRecord
+                    from TelemetryRecordEntity telemetryRecord
+                    where telemetryRecord.createdAt >= :from
+                      and telemetryRecord.createdAt < :to
+                    order by telemetryRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
+    @Bean
+@StepScope
+public JpaPagingItemReader<EventRecordEntity> eventRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<EventRecordEntity>()
+            .name("eventRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select eventRecord
+                    from EventRecordEntity eventRecord
+                    where eventRecord.createdAt >= :from
+                      and eventRecord.createdAt < :to
+                    order by eventRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<EventRecordEntity> eventRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<EventRecordEntity>()
-                .name("eventRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select eventRecord
-                        from EventRecordEntity eventRecord
-                        where eventRecord.createdAt >= :from
-                          and eventRecord.createdAt < :to
-                        order by eventRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
+@StepScope
+public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
+        EntityManagerFactory entityManagerFactory,
+        ExportProperties exportProperties,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return new JpaPagingItemReaderBuilder<HealthRecordEntity>()
+            .name("healthRecordReader")
+            .entityManagerFactory(entityManagerFactory)
+            .queryString("""
+                    select healthRecord
+                    from HealthRecordEntity healthRecord
+                    where healthRecord.createdAt >= :from
+                      and healthRecord.createdAt < :to
+                    order by healthRecord.id
+                    """)
+            .parameterValues(
+                    periodRange(
+                            fromDate,
+                            toDateExclusive,
+                            zoneId
+                    )
+            )
+            .pageSize(exportProperties.chunkSize())
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public JpaPagingItemReader<HealthRecordEntity> healthRecordReader(
-            EntityManagerFactory entityManagerFactory,
-            ExportProperties exportProperties,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return new JpaPagingItemReaderBuilder<HealthRecordEntity>()
-                .name("healthRecordReader")
-                .entityManagerFactory(entityManagerFactory)
-                .queryString("""
-                        select healthRecord
-                        from HealthRecordEntity healthRecord
-                        where healthRecord.createdAt >= :from
-                          and healthRecord.createdAt < :to
-                        order by healthRecord.id
-                        """)
-                .parameterValues(
-                        yearRange(
-                                year,
-                                exportProperties.zoneId()
-                        )
-                )
-                .pageSize(exportProperties.chunkSize())
-                .saveState(true)
-                .build();
-    }
+@StepScope
+public FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
+
+    return new FlatFileItemWriterBuilder<TelemetryRecordEntity>()
+            .name("telemetryRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.telemetryStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(TELEMETRY_HEADER)
+            )
+            .lineAggregator(
+                    telemetryRecord -> CsvLineFormatter.formatRow(
+                            telemetryRecord.getId(),
+                            telemetryRecord.getDeviceId(),
+                            telemetryRecord.getGatewayTimestamp(),
+                            telemetryRecord.getSequenceNumber(),
+                            telemetryRecord.getTemperatureC(),
+                            telemetryRecord.getRpm(),
+                            telemetryRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public FlatFileItemWriter<TelemetryRecordEntity> telemetryRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
+@StepScope
+public FlatFileItemWriter<EventRecordEntity> eventRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-        return new FlatFileItemWriterBuilder<TelemetryRecordEntity>()
-                .name("telemetryRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.telemetryStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(TELEMETRY_HEADER)
-                )
-                .lineAggregator(
-                        telemetryRecord -> CsvLineFormatter.formatRow(
-                                telemetryRecord.getId(),
-                                telemetryRecord.getDeviceId(),
-                                telemetryRecord.getGatewayTimestamp(),
-                                telemetryRecord.getSequenceNumber(),
-                                telemetryRecord.getTemperatureC(),
-                                telemetryRecord.getRpm(),
-                                telemetryRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
-
-    @Bean
-    @StepScope
-    public FlatFileItemWriter<EventRecordEntity> eventRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
-
-        return new FlatFileItemWriterBuilder<EventRecordEntity>()
-                .name("eventRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.eventsStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(EVENT_HEADER)
-                )
-                .lineAggregator(
-                        eventRecord -> CsvLineFormatter.formatRow(
-                                eventRecord.getId(),
-                                eventRecord.getDeviceId(),
-                                eventRecord.getGatewayTimestamp(),
-                                eventRecord.getSequenceNumber(),
-                                eventRecord.getEventType(),
-                                eventRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
+    return new FlatFileItemWriterBuilder<EventRecordEntity>()
+            .name("eventRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.eventsStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(EVENT_HEADER)
+            )
+            .lineAggregator(
+                    eventRecord -> CsvLineFormatter.formatRow(
+                            eventRecord.getId(),
+                            eventRecord.getDeviceId(),
+                            eventRecord.getGatewayTimestamp(),
+                            eventRecord.getSequenceNumber(),
+                            eventRecord.getEventType(),
+                            eventRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
 
     @Bean
-    @StepScope
-    public FlatFileItemWriter<HealthRecordEntity> healthRecordWriter(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        int exportYear = Math.toIntExact(year);
+@StepScope
+public FlatFileItemWriter<HealthRecordEntity> healthRecordWriter(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-        return new FlatFileItemWriterBuilder<HealthRecordEntity>()
-                .name("healthRecordWriter")
-                .resource(
-                        new FileSystemResource(
-                                exportFileService.healthStagingFile(
-                                        exportYear
-                                )
-                        )
-                )
-                .encoding(StandardCharsets.UTF_8.name())
-                .lineSeparator("\n")
-                .headerCallback(
-                        writer -> writer.write(HEALTH_HEADER)
-                )
-                .lineAggregator(
-                        healthRecord -> CsvLineFormatter.formatRow(
-                                healthRecord.getId(),
-                                healthRecord.getDeviceId(),
-                                healthRecord.getGatewayTimestamp(),
-                                healthRecord.getSequenceNumber(),
-                                healthRecord.getState(),
-                                healthRecord.getMqttConnected(),
-                                healthRecord.getPubLastOk(),
-                                healthRecord.getBufferFill(),
-                                healthRecord.getBufferDrops(),
-                                healthRecord.getDiagUptimeS(),
-                                healthRecord.getDiagReconnects(),
-                                healthRecord.getDiagPubOk(),
-                                healthRecord.getDiagPubFail(),
-                                healthRecord.getDiagLastError(),
-                                healthRecord.getCreatedAt()
-                        )
-                )
-                .shouldDeleteIfExists(true)
-                .shouldDeleteIfEmpty(false)
-                .saveState(true)
-                .build();
-    }
+    return new FlatFileItemWriterBuilder<HealthRecordEntity>()
+            .name("healthRecordWriter")
+            .resource(
+                    new FileSystemResource(
+                            exportFileService.healthStagingFile(
+                                    period
+                            )
+                    )
+            )
+            .encoding(StandardCharsets.UTF_8.name())
+            .lineSeparator("\n")
+            .headerCallback(
+                    writer -> writer.write(HEALTH_HEADER)
+            )
+            .lineAggregator(
+                    healthRecord -> CsvLineFormatter.formatRow(
+                            healthRecord.getId(),
+                            healthRecord.getDeviceId(),
+                            healthRecord.getGatewayTimestamp(),
+                            healthRecord.getSequenceNumber(),
+                            healthRecord.getState(),
+                            healthRecord.getMqttConnected(),
+                            healthRecord.getPubLastOk(),
+                            healthRecord.getBufferFill(),
+                            healthRecord.getBufferDrops(),
+                            healthRecord.getDiagUptimeS(),
+                            healthRecord.getDiagReconnects(),
+                            healthRecord.getDiagPubOk(),
+                            healthRecord.getDiagPubFail(),
+                            healthRecord.getDiagLastError(),
+                            healthRecord.getCreatedAt()
+                    )
+            )
+            .shouldDeleteIfExists(true)
+            .shouldDeleteIfEmpty(false)
+            .saveState(true)
+            .build();
+}
+    private ExportPeriod exportPeriod(
+        String fromDate,
+        String toDateExclusive,
+        String zoneId
+) {
+    return new ExportPeriod(
+            LocalDate.parse(fromDate),
+            LocalDate.parse(toDateExclusive),
+            ZoneId.of(zoneId)
+    );
+}
+    private Map<String, Object> periodRange(
+        String fromDate,
+        String toDateExclusive,
+        String zoneId
+) {
+    ExportPeriod period = exportPeriod(
+            fromDate,
+            toDateExclusive,
+            zoneId
+    );
 
-    private Map<String, Object> yearRange(
-            Long yearValue,
-            ZoneId zoneId
-    ) {
-        int year = Math.toIntExact(yearValue);
-
-        OffsetDateTime from = Year.of(year)
-                .atDay(1)
-                .atStartOfDay(zoneId)
-                .toOffsetDateTime();
-
-        OffsetDateTime to = Year.of(year + 1)
-                .atDay(1)
-                .atStartOfDay(zoneId)
-                .toOffsetDateTime();
-
-        return Map.of(
-                "from", from,
-                "to", to
-        );
-    }
+    return Map.of(
+            "from", period.fromTimestamp(),
+            "to", period.toTimestamp()
+    );
+}
 }
