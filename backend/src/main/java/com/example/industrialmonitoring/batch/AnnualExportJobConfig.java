@@ -1,5 +1,6 @@
 package com.example.industrialmonitoring.batch;
 
+import com.example.industrialmonitoring.export.ExportPeriod;
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.entity.EventRecordEntity;
 import com.example.industrialmonitoring.entity.HealthRecordEntity;
@@ -26,9 +27,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.transaction.PlatformTransactionManager;
 
+
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.Year;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
 
@@ -126,36 +129,53 @@ public class AnnualExportJobConfig {
     }
 
     @Bean
-    @StepScope
-    public Tasklet prepareAnnualExportTasklet(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return (contribution, chunkContext) -> {
-            int exportYear = Math.toIntExact(year);
+@StepScope
+public Tasklet prepareAnnualExportTasklet(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return (contribution, chunkContext) -> {
+        ExportPeriod period = exportPeriod(
+                fromDate,
+                toDateExclusive,
+                zoneId
+        );
 
-            exportFileService.prepareStagingDirectory(exportYear);
+        exportFileService.prepareStagingDirectory(period);
 
-            return RepeatStatus.FINISHED;
-        };
+        return RepeatStatus.FINISHED;
+    };
+
     }
 
     @Bean
-    @StepScope
-    public Tasklet finalizeAnnualExportTasklet(
-            ExportFileService exportFileService,
-            @Value("#{jobParameters['year']}")
-            Long year
-    ) {
-        return (contribution, chunkContext) -> {
-            int exportYear = Math.toIntExact(year);
+@StepScope
+public Tasklet finalizeAnnualExportTasklet(
+        ExportFileService exportFileService,
+        @Value("#{jobParameters['fromDate']}")
+        String fromDate,
+        @Value("#{jobParameters['toDateExclusive']}")
+        String toDateExclusive,
+        @Value("#{jobParameters['zoneId']}")
+        String zoneId
+) {
+    return (contribution, chunkContext) -> {
+        ExportPeriod period = exportPeriod(
+                fromDate,
+                toDateExclusive,
+                zoneId
+        );
 
-            exportFileService.publish(exportYear);
+        exportFileService.publish(period);
 
-            return RepeatStatus.FINISHED;
-        };
-    }
+        return RepeatStatus.FINISHED;
+    };
+}
 
     @Bean
     public Step telemetryExportStep(
@@ -439,7 +459,17 @@ public class AnnualExportJobConfig {
                 .saveState(true)
                 .build();
     }
-
+    private ExportPeriod exportPeriod(
+        String fromDate,
+        String toDateExclusive,
+        String zoneId
+) {
+    return new ExportPeriod(
+            LocalDate.parse(fromDate),
+            LocalDate.parse(toDateExclusive),
+            ZoneId.of(zoneId)
+    );
+}
     private Map<String, Object> yearRange(
             Long yearValue,
             ZoneId zoneId
