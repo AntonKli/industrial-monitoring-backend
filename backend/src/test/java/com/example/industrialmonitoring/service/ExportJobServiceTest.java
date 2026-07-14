@@ -1,5 +1,6 @@
 package com.example.industrialmonitoring.service;
 
+import com.example.industrialmonitoring.exception.InvalidExportPeriodException;
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
 import com.example.industrialmonitoring.exception.InvalidExportYearException;
@@ -15,6 +16,7 @@ import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteExcep
 
 import java.time.Year;
 import java.time.ZoneId;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -56,7 +58,77 @@ class ExportJobServiceTest {
                 exportProperties
         );
     }
+    @Test
+void shouldStartRangeExportWithIdentifyingPeriodParameters()
+        throws Exception {
 
+    LocalDate fromDate =
+            LocalDate.of(2025, 10, 1);
+
+    LocalDate toDateExclusive =
+            LocalDate.of(2026, 4, 1);
+
+    JobExecution jobExecution =
+            mock(JobExecution.class);
+
+    when(
+            jobLauncher.run(
+                    eq(annualMonitoringExportJob),
+                    any(JobParameters.class)
+            )
+    ).thenReturn(jobExecution);
+
+    JobExecution result =
+            exportJobService.startRangeExport(
+                    fromDate,
+                    toDateExclusive
+            );
+
+    ArgumentCaptor<JobParameters> parametersCaptor =
+            ArgumentCaptor.forClass(JobParameters.class);
+
+    verify(jobLauncher).run(
+            eq(annualMonitoringExportJob),
+            parametersCaptor.capture()
+    );
+
+    JobParameters parameters =
+            parametersCaptor.getValue();
+
+    assertNull(parameters.getParameter("year"));
+
+    assertEquals(
+            "2025-10-01",
+            parameters.getString("fromDate")
+    );
+
+    assertEquals(
+            "2026-04-01",
+            parameters.getString("toDateExclusive")
+    );
+
+    assertEquals(
+            BERLIN.getId(),
+            parameters.getString("zoneId")
+    );
+
+    assertTrue(
+            parameters.getParameter("fromDate")
+                    .isIdentifying()
+    );
+
+    assertTrue(
+            parameters.getParameter("toDateExclusive")
+                    .isIdentifying()
+    );
+
+    assertTrue(
+            parameters.getParameter("zoneId")
+                    .isIdentifying()
+    );
+
+    assertSame(jobExecution, result);
+}
     @Test
     void shouldStartAnnualExportWithIdentifyingPeriodParameters()
             throws Exception {
@@ -122,7 +194,87 @@ class ExportJobServiceTest {
 
         assertSame(jobExecution, result);
     }
+    @Test
+void shouldRejectEmptyRange() {
+    LocalDate date =
+            LocalDate.of(2026, 4, 1);
 
+    InvalidExportPeriodException exception =
+            assertThrows(
+                    InvalidExportPeriodException.class,
+                    () -> exportJobService.startRangeExport(
+                            date,
+                            date
+                    )
+            );
+
+    assertTrue(
+            exception.getMessage()
+                    .contains("must be before")
+    );
+
+    verifyNoInteractions(jobLauncher);
+}
+
+@Test
+void shouldRejectReversedRange() {
+    InvalidExportPeriodException exception =
+            assertThrows(
+                    InvalidExportPeriodException.class,
+                    () -> exportJobService.startRangeExport(
+                            LocalDate.of(2026, 4, 2),
+                            LocalDate.of(2026, 4, 1)
+                    )
+            );
+
+    assertTrue(
+            exception.getMessage()
+                    .contains("must be before")
+    );
+
+    verifyNoInteractions(jobLauncher);
+}
+
+@Test
+void shouldRejectRangeBeforeMinimumDate() {
+    InvalidExportPeriodException exception =
+            assertThrows(
+                    InvalidExportPeriodException.class,
+                    () -> exportJobService.startRangeExport(
+                            LocalDate.of(1999, 12, 31),
+                            LocalDate.of(2000, 1, 2)
+                    )
+            );
+
+    assertTrue(
+            exception.getMessage()
+                    .contains("2000-01-01")
+    );
+
+    verifyNoInteractions(jobLauncher);
+}
+
+@Test
+void shouldRejectRangeEndingTooFarInFuture() {
+    LocalDate latestAllowedEnd =
+            LocalDate.now(BERLIN).plusDays(1);
+
+    InvalidExportPeriodException exception =
+            assertThrows(
+                    InvalidExportPeriodException.class,
+                    () -> exportJobService.startRangeExport(
+                            latestAllowedEnd.minusDays(1),
+                            latestAllowedEnd.plusDays(1)
+                    )
+            );
+
+    assertTrue(
+            exception.getMessage()
+                    .contains("must not be after")
+    );
+
+    verifyNoInteractions(jobLauncher);
+}
     @Test
     void shouldRejectYearBeforeMinimum() {
         InvalidExportYearException exception =

@@ -1,12 +1,16 @@
 package com.example.industrialmonitoring.controller;
 
 import com.example.industrialmonitoring.dto.ExportJobResponse;
+import com.example.industrialmonitoring.dto.ExportPeriodJobResponse;
 import com.example.industrialmonitoring.service.ExportJobService;
 import org.springframework.batch.core.JobExecution;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/exports")
@@ -29,6 +33,31 @@ public class ExportController {
                 jobExecution.getId(),
                 jobExecution.getJobInstance().getJobName(),
                 year,
+                jobExecution.getStatus().name()
+        );
+    }
+
+    @PostMapping("/range")
+    public ExportPeriodJobResponse startRangeExport(
+            @RequestParam("from")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam("to")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDateExclusive
+    ) {
+        JobExecution jobExecution =
+                exportJobService.startRangeExport(
+                        fromDate,
+                        toDateExclusive
+                );
+
+        return new ExportPeriodJobResponse(
+                jobExecution.getId(),
+                jobExecution.getJobInstance().getJobName(),
+                fromDate,
+                toDateExclusive,
                 jobExecution.getStatus().name()
         );
     }

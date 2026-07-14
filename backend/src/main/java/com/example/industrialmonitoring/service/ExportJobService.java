@@ -1,5 +1,6 @@
 package com.example.industrialmonitoring.service;
 
+import com.example.industrialmonitoring.exception.InvalidExportPeriodException;
 import com.example.industrialmonitoring.batch.AnnualExportJobConfig;
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
@@ -18,11 +19,14 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Year;
+import java.time.LocalDate;
 
 @Service
 public class ExportJobService {
 
     private static final int MINIMUM_EXPORT_YEAR = 2000;
+    private static final LocalDate MINIMUM_EXPORT_DATE =
+        LocalDate.of(MINIMUM_EXPORT_YEAR, 1, 1);
 
     private final JobLauncher jobLauncher;
     private final Job annualMonitoringExportJob;
@@ -51,6 +55,20 @@ public class ExportJobService {
         return startExport(period);
     }
 
+    public JobExecution startRangeExport(
+        LocalDate fromDate,
+        LocalDate toDateExclusive
+) {
+    validateRange(fromDate, toDateExclusive);
+
+    ExportPeriod period = new ExportPeriod(
+            fromDate,
+            toDateExclusive,
+            exportProperties.zoneId()
+    );
+
+    return startExport(period);
+}
     private JobExecution startExport(ExportPeriod period) {
         JobParameters jobParameters =
                 createJobParameters(period);
@@ -103,6 +121,42 @@ public class ExportJobService {
                 .toJobParameters();
     }
 
+    private void validateRange(
+        LocalDate fromDate,
+        LocalDate toDateExclusive
+) {
+    if (fromDate == null || toDateExclusive == null) {
+        throw new InvalidExportPeriodException(
+                "Export period must contain a start "
+                        + "and an exclusive end date"
+        );
+    }
+
+    if (!fromDate.isBefore(toDateExclusive)) {
+        throw new InvalidExportPeriodException(
+                "Export start date must be before "
+                        + "the exclusive end date"
+        );
+    }
+
+    if (fromDate.isBefore(MINIMUM_EXPORT_DATE)) {
+        throw new InvalidExportPeriodException(
+                "Export start date must not be before "
+                        + MINIMUM_EXPORT_DATE
+        );
+    }
+
+    LocalDate latestAllowedEnd =
+            LocalDate.now(exportProperties.zoneId())
+                    .plusDays(1);
+
+    if (toDateExclusive.isAfter(latestAllowedEnd)) {
+        throw new InvalidExportPeriodException(
+                "Export end date must not be after "
+                        + latestAllowedEnd
+        );
+    }
+}
     private void validateCompletedYear(int year) {
         int latestCompletedYear = Year.now(
                 exportProperties.zoneId()
