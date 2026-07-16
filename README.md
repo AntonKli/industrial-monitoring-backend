@@ -1,6 +1,6 @@
-# Industrial Monitoring Backend
+# Industrial Monitoring Platform
 
-A Java 21 and Spring Boot 3.5.15 backend that receives telemetry, event and health data from a CODESYS edge gateway over MQTT, persists it in PostgreSQL, exposes REST and Prometheus endpoints, and creates scheduled or on-demand CSV exports with Spring Batch.
+A full-stack monitoring platform built with Java 21, Spring Boot 3.5.15 and Angular 21. It receives telemetry, event and health data from a CODESYS edge gateway through MQTT, stores the data in PostgreSQL, visualizes the current system state, exposes REST and monitoring endpoints, and creates scheduled or on-demand CSV exports with Spring Batch.
 
 ## Related Project
 
@@ -10,15 +10,11 @@ A Java 21 and Spring Boot 3.5.15 backend that receives telemetry, event and heal
 
 ## Overview
 
-Industrial edge devices publish telemetry, event and health data through MQTT.
+Industrial devices publish telemetry, event and health messages through MQTT. The Spring Boot backend validates the messages, automatically registers devices and persists the received data in PostgreSQL.
 
-The backend subscribes to the configured MQTT topics, validates incoming messages, automatically registers devices and stores the received data in PostgreSQL.
+The Angular frontend consumes the REST API and displays backend availability, current telemetry, device diagnostics, registered devices and recent events. Users can select complete calendar days and download telemetry, health and event data as a ZIP archive containing three CSV files.
 
-The stored information is available through REST APIs and can be monitored with Spring Boot Actuator, Prometheus and Grafana.
-
-A Spring Batch job creates CSV archives for telemetry, event and health records. Exports can cover a completed calendar year or a manually selected date range. The records are processed in configurable chunks and initially written to a staging directory. The completed export is published only after every batch step has finished successfully.
-
-The end-to-end path from the CODESYS gateway through Eclipse Mosquitto into the backend was validated manually. The automated test suite focuses on ingestion services, persistence, REST controllers, scheduling and export behavior.
+Prometheus and Grafana provide operational monitoring, while Spring Batch handles scheduled yearly exports and manually selected date ranges.
 
 ---
 
@@ -39,24 +35,19 @@ Spring Boot Backend
         |
         +--------------------> PostgreSQL
         |
-        +--------------------> REST API
+        +--------------------> REST API ----------------> Angular Frontend
         |
         +--------------------> OpenAPI / Swagger UI
         |
-        +--------------------> Spring Boot Actuator
-        |
-        +--------------------> Prometheus Metrics
-        |                           |
-        |                           v
-        |                       Prometheus
-        |                           |
-        |                           v
-        |                        Grafana
-        |
-        +--------------------> Spring Batch
+        +--------------------> Actuator / Prometheus Metrics
                                     |
                                     v
-                               CSV Export
+                               Prometheus
+                                    |
+                                    v
+                                 Grafana
+        |
+        +--------------------> Spring Batch -----------> CSV / ZIP Export
 ```
 
 ---
@@ -65,19 +56,17 @@ Spring Boot Backend
 
 - MQTT ingestion for telemetry, event and health messages
 - Integration with a CODESYS-based industrial edge gateway
-- Automatic device registration
-- PostgreSQL persistence with Spring Data JPA and Hibernate
-- Database versioning with Flyway
-- Telemetry endpoints with pagination and time-range filtering
-- Device, event and health query endpoints
-- OpenAPI documentation and Swagger UI
-- Spring Boot Actuator endpoints
-- Custom Prometheus ingestion metrics and Grafana monitoring
-- Scheduled yearly and manual date-range CSV exports, including cross-year ranges
-- Chunk-based Spring Batch processing with persistent metadata and duplicate protection
+- Automatic device registration and PostgreSQL persistence
+- REST endpoints for devices, telemetry, events and health data
+- Angular dashboard with current backend status, telemetry and device-health information
+- Registered-device and recent-event views
+- Browser download of ZIP archives containing three CSV files
+- Scheduled yearly and manual date-range exports with Spring Batch
+- Chunk-based processing, persistent batch metadata and duplicate protection
 - Staging-to-publication workflow that exposes only completed exports
-- Reproducible local development stack with Docker Compose
-- Automated tests and continuous integration with GitHub Actions
+- OpenAPI documentation, Actuator, Prometheus and Grafana
+- Docker Compose development environment
+- Automated backend tests and GitHub Actions continuous integration
 
 ---
 
@@ -85,53 +74,29 @@ Spring Boot Backend
 
 ### Backend
 
-- Java 21
-- Spring Boot 3.5.15
-- Spring Batch
-- Spring Data JPA
-- Hibernate
-- Flyway
+Java 21 · Spring Boot 3.5.15 · Spring Batch · Spring Data JPA · Hibernate · Flyway
 
-### Messaging
+### Frontend
 
-- MQTT
-- Eclipse Paho MQTT Client
-- Eclipse Mosquitto
+Angular 21 · TypeScript · Standalone Components · Angular Signals · Angular Router · Angular HttpClient · SCSS
 
-### Database
+### Data and Messaging
 
-- PostgreSQL 16
+PostgreSQL 16 · MQTT · Eclipse Paho · Eclipse Mosquitto
 
-### Monitoring
+### Monitoring and Infrastructure
 
-- Spring Boot Actuator
-- Prometheus
-- Grafana
+Spring Boot Actuator · Prometheus · Grafana · Docker · Docker Compose · Maven · GitHub Actions
 
-### Testing
+### Testing and Documentation
 
-- JUnit 5
-- Mockito
-- MockMvc
-- Testcontainers
-
-### Infrastructure
-
-- Docker
-- Docker Compose
-- Maven
-- GitHub Actions
-
-### Documentation
-
-- OpenAPI 3
-- Swagger UI
+JUnit 5 · Mockito · MockMvc · Testcontainers · OpenAPI 3 · Swagger UI
 
 ---
 
 ## MQTT Integration
 
-The backend subscribes to the following MQTT topic patterns:
+The backend subscribes to these topic patterns:
 
 ```text
 rtz/+/telemetry
@@ -139,15 +104,7 @@ rtz/+/events
 rtz/+/health
 ```
 
-Example topics for the device `edge01`:
-
-```text
-rtz/edge01/telemetry
-rtz/edge01/events
-rtz/edge01/health
-```
-
-### Example Telemetry Message
+Example telemetry message:
 
 ```json
 {
@@ -159,411 +116,82 @@ rtz/edge01/health
 }
 ```
 
-### Example Event Message
+Example device topics:
 
-```json
-{
-  "v": 1,
-  "ts": 123001,
-  "seq": 4,
-  "type": "ALARM_RAISED"
-}
-```
-
-### Example Health Message
-
-```json
-{
-  "v": 1,
-  "ts": 123002,
-  "seq": 5,
-  "state": 2,
-  "mqtt_connected": true,
-  "pub_last_ok": true,
-  "buffer_fill": 0,
-  "buffer_drops": 0,
-  "diag_uptime_s": 123,
-  "diag_reconnects": 1,
-  "diag_pub_ok": 120,
-  "diag_pub_fail": 0,
-  "diag_last_error": 0
-}
+```text
+rtz/edge01/telemetry
+rtz/edge01/events
+rtz/edge01/health
 ```
 
 ---
 
 ## REST API
 
-### Devices
-
 ```text
-GET /api/devices
-GET /api/devices/{deviceId}
-```
+GET  /api/devices
+GET  /api/telemetry/latest
+GET  /api/telemetry/paged?page=0&size=50
+GET  /api/telemetry/device/{deviceId}/range
+GET  /api/events
+GET  /api/health/latest
 
-### Telemetry
-
-```text
-GET /api/telemetry
-GET /api/telemetry/latest
-GET /api/telemetry/paged?page=0&size=50
-
-GET /api/telemetry/device/{deviceId}
-GET /api/telemetry/device/{deviceId}/paged?page=0&size=50
-
-GET /api/telemetry/device/{deviceId}/range
-    ?from=2026-01-01T00:00:00Z
-    &to=2026-12-31T23:59:59Z
-    &page=0
-    &size=50
-```
-
-### Events
-
-```text
-GET /api/events
-GET /api/events/device/{deviceId}
-```
-
-### Health
-
-```text
-GET /api/health
-GET /api/health/latest
-GET /api/health/device/{deviceId}
-```
-
-### Export APIs
-
-```text
 POST /api/exports/yearly?year={year}
 POST /api/exports/range?from={from}&to={to}
+POST /api/exports/range/download?from={from}&to={to}
+```
+
+Complete endpoint documentation is available through Swagger UI at:
+
+```text
+http://localhost:8080/swagger-ui.html
 ```
 
 ---
 
-## CSV Exports with Spring Batch
+## CSV and ZIP Exports
 
-The backend uses Spring Batch to create application-level CSV archives of stored telemetry, event and health records.
+Spring Batch creates separate CSV files for telemetry, events and health records. Exports can cover a completed calendar year or a manually selected date range.
 
-Two export modes are available:
+The processing flow uses configurable chunks and writes files to a staging directory first. An export is published only after every batch step completes successfully. The browser download endpoint then streams the completed CSV files as a ZIP archive.
 
-- Scheduled or manually triggered exports of completed calendar years
-- Manually triggered exports for freely selected date ranges
+The backend uses an exclusive end date. The Angular frontend presents both selected days as inclusive and internally sends the following calendar day as the backend end date.
 
-Both modes use the same Spring Batch job, readers, writers, staging workflow and publication process.
+For batch flow, validation rules, error responses, configuration, idempotency and API examples, see the [detailed export documentation](docs/export-documentation.md).
 
-### Scheduled Annual Export
-
-The default scheduler runs every January 1 at 02:00 in the `Europe/Berlin` time zone and exports the complete previous calendar year.
-
-Example:
-
-```text
-Scheduler execution: January 1, 2027 at 02:00
-Export range:        2026-01-01 until 2027-01-01
-```
-
-The end date is exclusive.
-
-The selected records therefore satisfy:
-
-```text
-createdAt >= 2026-01-01T00:00:00
-createdAt <  2027-01-01T00:00:00
-```
-
-Only completed calendar years can be started through the yearly REST endpoint. Data from the current year can instead be exported through the range endpoint.
-
-### Flexible Range Export
-
-A manual export can use any valid date range, including a range that crosses calendar-year boundaries.
-
-Example:
-
-```text
-from: 2025-10-01
-to:   2026-04-01
-```
-
-This exports records from October 1, 2025 up to, but not including, April 1, 2026.
-
-The range uses half-open interval semantics:
-
-```text
-createdAt >= from
-createdAt <  to
-```
-
-Using an exclusive end date avoids ambiguous values such as `23:59:59.999999`.
-
-Valid ranges must meet the following conditions:
-
-- `from` must be before `to`
-- `from` must not be earlier than `2000-01-01`
-- `to` must not be later than the next calendar day in the configured export time zone
-
-Allowing the next day as the exclusive end makes it possible to include the complete current day.
-
-### Batch Job Flow
-
-```text
-prepareAnnualExportStep
-        |
-        v
-telemetryExportStep
-        |
-        v
-eventExportStep
-        |
-        v
-healthExportStep
-        |
-        v
-finalizeAnnualExportStep
-```
-
-#### `prepareAnnualExportStep`
-
-Creates the staging directory for the selected export period.
-
-#### `telemetryExportStep`
-
-Reads telemetry records from PostgreSQL in configurable chunks and writes them to CSV.
-
-#### `eventExportStep`
-
-Reads event records from PostgreSQL in configurable chunks and writes them to CSV.
-
-#### `healthExportStep`
-
-Reads health records from PostgreSQL in configurable chunks and writes them to CSV.
-
-#### `finalizeAnnualExportStep`
-
-Publishes the export only after every previous step has completed successfully.
-
-### Staging and Publication
-
-Files are initially written to a staging directory:
-
-```text
-exports/
-└── .staging/
-    └── 2025-10-01_to_2026-04-01/
-        ├── telemetry-export-2025-10-01_to_2026-04-01.csv
-        ├── events-export-2025-10-01_to_2026-04-01.csv
-        └── health-export-2025-10-01_to_2026-04-01.csv
-```
-
-After all batch steps complete successfully, the directory is published:
-
-```text
-exports/
-└── 2025-10-01_to_2026-04-01/
-    ├── telemetry-export-2025-10-01_to_2026-04-01.csv
-    ├── events-export-2025-10-01_to_2026-04-01.csv
-    └── health-export-2025-10-01_to_2026-04-01.csv
-```
-
-A complete calendar-year export keeps the shorter year-based name:
-
-```text
-exports/
-└── 2025/
-    ├── telemetry-export-2025.csv
-    ├── events-export-2025.csv
-    └── health-export-2025.csv
-```
-
-Incomplete exports are never exposed as completed archives.
-
-The generated `exports` directory is excluded from Git.
-
-### Chunk-Based Processing
-
-Records are read and written in configurable chunks instead of loading an entire export period into memory.
-
-The chunk size can be configured through:
-
-```text
-EXPORT_CHUNK_SIZE
-```
-
-### Spring Batch Metadata and Idempotency
-
-Spring Batch stores job, execution and step metadata in PostgreSQL.
-
-The identifying job parameters are:
-
-```text
-fromDate
-toDateExclusive
-zoneId
-```
-
-Starting the same period again therefore refers to the same Spring Batch job instance.
-
-A partial current-year export does not block a later complete yearly export because the two exports use different date ranges.
-
-### Manual Yearly Export
-
-Only completed calendar years are accepted.
-
-#### PowerShell
-
-```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:8080/api/exports/yearly?year=2025" |
-  ConvertTo-Json
-```
-
-#### curl
-
-```bash
-curl -X POST \
-  "http://localhost:8080/api/exports/yearly?year=2025"
-```
-
-#### Successful Response
-
-```json
-{
-  "executionId": 1,
-  "jobName": "annualMonitoringExportJob",
-  "year": 2025,
-  "status": "COMPLETED"
-}
-```
-
-### Manual Range Export
-
-#### PowerShell
-
-```powershell
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01" |
-  ConvertTo-Json
-```
-
-#### curl
-
-```bash
-curl -X POST \
-  "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01"
-```
-
-#### Successful Response
-
-```json
-{
-  "executionId": 2,
-  "jobName": "annualMonitoringExportJob",
-  "fromDate": "2025-10-01",
-  "toDateExclusive": "2026-04-01",
-  "status": "COMPLETED"
-}
-```
-
-## Export Error Responses
-
-### Invalid Export Year
-
-A year before 2000 or later than the most recently completed calendar year returns HTTP `400 Bad Request`.
-
-Example when the current year is 2026:
-
-```json
-{
-  "type": "about:blank",
-  "title": "Invalid export year",
-  "status": 400,
-  "detail": "Export year must be between 2000 and 2025. Use a range export for the current year.",
-  "instance": "/api/exports/yearly"
-}
-```
-
-### Invalid Export Period
-
-An empty, reversed, pre-2000 or excessively future-dated range returns HTTP `400 Bad Request`.
-
-```json
-{
-  "type": "about:blank",
-  "title": "Invalid export period",
-  "status": 400,
-  "detail": "Export start date must be before the exclusive end date",
-  "instance": "/api/exports/range"
-}
-```
-
-### Export Conflict
-
-A running, completed or currently non-restartable export with the same identifying period returns HTTP `409 Conflict`.
-
-```json
-{
-  "type": "about:blank",
-  "title": "Export conflict",
-  "status": 409,
-  "detail": "Export for period 2022 is already running, completed or cannot currently be restarted",
-  "instance": "/api/exports/yearly"
-}
-```
-
-> The CSV export is an application-level data archive. It is not a physical PostgreSQL backup and does not replace database backup and recovery procedures.
+> CSV exports are application-level data archives. They do not replace physical PostgreSQL backup and recovery procedures.
 
 ---
 
-## Export Configuration
+## Angular Monitoring Frontend
 
-CSV export processing and the annual scheduler are configured through environment variables.
+The standalone Angular application provides a user-oriented view of the monitoring data exposed by the backend.
 
-| Variable | Default | Description |
-|---|---:|---|
-| `EXPORT_ENABLED` | `true` | Enables or disables the annual scheduler |
-| `EXPORT_OUTPUT_DIR` | `exports` | Base directory for generated CSV files |
-| `EXPORT_CHUNK_SIZE` | `100` | Records processed per transaction |
-| `EXPORT_CRON` | `0 0 2 1 1 *` | Scheduler cron expression |
-| `EXPORT_ZONE` | `Europe/Berlin` | Scheduler and export time zone |
+### Dashboard
 
-Default cron expression:
+The dashboard displays backend availability, registered-device count, latest temperature and motor speed, telemetry metadata and device diagnostics.
 
-```text
-0 0 2 1 1 *
-```
+![Angular Monitoring Dashboard](docs/images/angular-dashboard.png)
 
-Meaning:
+### Devices and Events
 
-```text
-Second:       0
-Minute:       0
-Hour:         2
-Day of month: 1
-Month:        January
-Day of week:  any
-```
+The devices page displays registered devices, a date-range export form and the five most recent monitoring events.
 
-The application default for `EXPORT_OUTPUT_DIR` is `exports`. When the backend runs through Docker Compose, the directory is available as `/app/exports` and mapped to the local project directory `./exports`:
+![Angular Devices and Events](docs/images/angular-devices.png)
 
-```yaml
-volumes:
-  - ./exports:/app/exports
-```
+### ZIP Export Download
 
-Explicit Docker value:
+The selected period is downloaded as one ZIP archive containing telemetry, health and event CSV files.
 
-```dotenv
-EXPORT_OUTPUT_DIR=/app/exports
-```
+![Angular ZIP Export Download](docs/images/angular-export-download.png)
+
+The screenshots use data generated by the CODESYS and MQTT test setup.
 
 ---
 
 ## Operational Monitoring
 
-### Actuator Endpoints
+The backend exposes health information and custom ingestion metrics through Spring Boot Actuator and Prometheus.
 
 ```text
 GET /actuator/health
@@ -572,15 +200,7 @@ GET /actuator/metrics
 GET /actuator/prometheus
 ```
 
-### Example Health Response
-
-```json
-{
-  "status": "UP"
-}
-```
-
-### Custom Prometheus Metrics
+Custom metrics:
 
 ```text
 industrial_telemetry_records_saved_total
@@ -588,47 +208,22 @@ industrial_event_records_saved_total
 industrial_health_records_saved_total
 ```
 
----
-
-## Monitoring Dashboard
-
-The backend exposes application and custom ingestion metrics through the Prometheus endpoint.
-
-Prometheus collects these metrics and Grafana visualizes the current backend and ingestion state.
-
 ### Grafana Dashboard
 
 ![Grafana Dashboard](docs/images/grafana-dashboard.png)
 
 ---
 
-## API Documentation
-
-Swagger UI:
-
-```text
-http://localhost:8080/swagger-ui.html
-```
-
-OpenAPI specification:
-
-```text
-http://localhost:8080/v3/api-docs
-```
-
----
-
-## Running with Docker Compose
+## Running the Project
 
 ### Requirements
 
 - Docker Desktop or Docker Engine
 - Docker Compose
+- Node.js and npm
 - Git
 
-### Configuration
-
-Copy the example environment file.
+### 1. Configure the Environment
 
 #### Windows PowerShell
 
@@ -642,43 +237,15 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Replace the placeholder credentials in the local `.env` file.
+Replace the placeholder credentials in `.env`. The file is excluded from Git.
 
-Keep local credentials in `.env`. This file is excluded from Git.
-
-### Build and Start
+### 2. Start the Backend Stack
 
 ```bash
 docker compose up --build -d
 ```
 
-### Service Status
-
-```bash
-docker compose ps
-```
-
-### Backend Logs
-
-```bash
-docker compose logs backend --tail=200
-```
-
-### Stop
-
-```bash
-docker compose down
-```
-
-### Stop and Remove PostgreSQL Data
-
-```bash
-docker compose down -v
-```
-
-> Removing the PostgreSQL volume deletes the local database data used by Docker Compose.
-
-### Service URLs
+Services:
 
 ```text
 Backend API:  http://localhost:8080
@@ -689,105 +256,33 @@ Mosquitto:    localhost:1884
 PostgreSQL:   localhost:5432
 ```
 
-Default Grafana development login:
-
-```text
-Username: admin
-Password: admin
-```
-
-The default Grafana credentials are intended only for local development.
-
----
-
-## Local Backend Development
-
-The Maven wrapper is included in the `backend` directory.
-
-### Windows
-
-```powershell
-cd backend
-.\mvnw.cmd clean test
-.\mvnw.cmd spring-boot:run
-```
-
-### Linux or macOS
+### 3. Start the Angular Frontend
 
 ```bash
-cd backend
-./mvnw clean test
-./mvnw spring-boot:run
+cd frontend/angular-monitoring-frontend
+npm install
+npm start
 ```
 
-A locally started backend requires reachable PostgreSQL and MQTT services matching the configured environment variables.
-
----
-
-## Database Migrations
-
-Flyway manages the database schema.
-
-Current migrations:
+Open:
 
 ```text
-V1  Application tables
-    - devices
-    - telemetry_records
-    - events
-    - health_records
-
-V2  Spring Batch metadata tables and sequences
+http://localhost:4200
 ```
 
-Hibernate validates the Flyway-managed schema and does not create or update database tables automatically.
+The development proxy forwards `/api/**` and `/actuator/**` requests to the backend on port `8080`. The Angular frontend is currently started separately and is not part of the Docker Compose stack.
+
+### Stop the Backend Stack
+
+```bash
+docker compose down
+```
 
 ---
 
-## Testing
+## Testing and Build Verification
 
-The project contains unit and integration tests for the main backend workflows.
-
-### Application Context Tests
-
-- Spring Boot application startup
-- Flyway migrations
-- PostgreSQL connectivity
-
-### Repository Integration Tests
-
-- Telemetry persistence
-- PostgreSQL interaction
-- Database queries
-
-### Ingestion Service Integration Tests
-
-- Telemetry, event and health processing
-- Automatic device registration
-- PostgreSQL persistence verification
-
-These automated tests invoke the ingestion services directly. They do not start Mosquitto or publish MQTT packets over the network.
-
-### REST Controller Tests
-
-- Telemetry, event and health endpoints
-- Pagination and telemetry time-range filtering
-- Yearly and flexible range export endpoints
-- HTTP 400 error responses
-- HTTP 409 conflict responses
-
-### Export Tests
-
-- Annual and flexible export-period calculation
-- Export file and directory management
-- CSV escaping and spreadsheet-formula protection
-- Identifying Spring Batch job parameters
-- Duplicate and conflict handling
-- Range validation
-- Scheduler calculation of the previous year
-- Scheduler error handling
-
-### Run Tests
+### Backend
 
 #### Windows
 
@@ -803,20 +298,34 @@ cd backend
 ./mvnw clean test
 ```
 
+The test suite covers application startup, Flyway migrations, repositories, ingestion services, REST controllers, export validation, file handling, scheduling and duplicate protection.
+
+### Frontend
+
+```bash
+cd frontend/angular-monitoring-frontend
+npm run build
+```
+
+GitHub Actions runs the Maven test suite for pushes and pull requests targeting `main`.
+
 ---
 
-## Continuous Integration
+## Database Migrations
 
-GitHub Actions runs the Maven test suite for pushes and pull requests targeting the `main` branch.
+Flyway manages the database schema:
 
-The workflow compiles the backend and executes automated tests covering:
+```text
+V1  Application tables
+    - devices
+    - telemetry_records
+    - events
+    - health_records
 
-- Spring Boot application context startup
-- Flyway and PostgreSQL Testcontainers integration
-- Repository and ingestion-service behavior
-- REST controller behavior
-- Export-period, file-management and scheduler logic
-- Validation and HTTP error handling
+V2  Spring Batch metadata tables and sequences
+```
+
+Hibernate validates the Flyway-managed schema and does not create or update tables automatically.
 
 ---
 
@@ -826,29 +335,22 @@ The workflow compiles the backend and executes automated tests covering:
 industrial-monitoring-backend/
 ├── backend/
 │   ├── src/main/java/com/example/industrialmonitoring/
-│   │   ├── batch/
-│   │   ├── config/
-│   │   ├── controller/
-│   │   ├── dto/
-│   │   ├── entity/
-│   │   ├── exception/
-│   │   ├── export/
-│   │   ├── mapper/
-│   │   ├── mqtt/
-│   │   ├── repository/
-│   │   ├── scheduler/
-│   │   └── service/
-│   ├── src/main/resources/
-│   │   └── db/migration/
+│   ├── src/main/resources/db/migration/
 │   ├── src/test/
 │   ├── Dockerfile
 │   └── pom.xml
+├── frontend/
+│   └── angular-monitoring-frontend/
 ├── docker/
 │   └── mosquitto/
 ├── monitoring/
 │   └── prometheus/
 ├── docs/
+│   ├── export-documentation.md
 │   └── images/
+│       ├── angular-dashboard.png
+│       ├── angular-devices.png
+│       ├── angular-export-download.png
 │       └── grafana-dashboard.png
 ├── .env.example
 ├── docker-compose.yml
