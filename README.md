@@ -26,28 +26,35 @@ CODESYS PLC Runtime
         v
 Industrial Edge Gateway
         |
-        | MQTT
+      MQTT
+        |
         v
 Eclipse Mosquitto
         |
         v
 Spring Boot Backend
         |
-        +--------------------> PostgreSQL
+        +--> PostgreSQL
         |
-        +--------------------> REST API ----------------> Angular Frontend
+        +--> REST API
+        |       |
+        |       v
+        |   Angular Frontend
         |
-        +--------------------> OpenAPI / Swagger UI
+        +--> OpenAPI / Swagger UI
         |
-        +--------------------> Actuator / Prometheus Metrics
-                                    |
-                                    v
-                               Prometheus
-                                    |
-                                    v
-                                 Grafana
+        +--> Actuator / Prometheus Metrics
+        |       |
+        |       v
+        |   Prometheus
+        |       |
+        |       v
+        |    Grafana
         |
-        +--------------------> Spring Batch -----------> CSV / ZIP Export
+        +--> Spring Batch
+                |
+                v
+          CSV / ZIP Export
 ```
 
 ---
