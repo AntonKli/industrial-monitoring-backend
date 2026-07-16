@@ -1,0 +1,122 @@
+<section class="dashboard">
+  <h2>System Overview</h2>
+
+  <div class="status-grid">
+    <article
+      class="status-card"
+      [class.card-success]="backendStatus() === 'UP'"
+      [class.card-error]="backendStatus() === 'DOWN'"
+    >
+      <h3>Backend Status</h3>
+      <p>{{ backendStatus() }}</p>
+    </article>
+
+    <article class="status-card">
+      <h3>Registered Devices</h3>
+      <p>{{ deviceCount() }}</p>
+    </article>
+
+    @if (latestTelemetry(); as telemetry) {
+    <article class="status-card">
+      <h3>Temperature</h3>
+      <p>{{ telemetry.temperatureC }} °C</p>
+    </article>
+
+    <article class="status-card">
+      <h3>Motor Speed</h3>
+      <p>{{ telemetry.rpm }} RPM</p>
+    </article>
+    }
+  </div>
+
+  @if (latestTelemetry(); as telemetry) {
+  <article class="telemetry-details">
+    <h3>Latest Telemetry</h3>
+
+    <dl>
+      <div>
+        <dt>Device</dt>
+        <dd>{{ telemetry.deviceId }}</dd>
+      </div>
+
+      <div>
+        <dt>Sequence</dt>
+        <dd>{{ telemetry.sequenceNumber }}</dd>
+      </div>
+
+      <div>
+        <dt>Received At</dt>
+        <dd>
+          {{ telemetry.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}
+        </dd>
+      </div>
+    </dl>
+  </article>
+  } @else {
+  <p>Loading telemetry data...</p>
+  }
+
+  @if (latestHealth(); as health) {
+  <article class="health-details">
+    <h3>Device Health</h3>
+
+    <div class="health-grid">
+      <div
+        [class.card-success]="health.mqttConnected"
+        [class.card-error]="!health.mqttConnected"
+      >
+        <span class="health-label">MQTT Connection</span>
+        <strong>
+          {{ health.mqttConnected ? 'Connected' : 'Disconnected' }}
+        </strong>
+      </div>
+
+      <div
+        [class.card-success]="health.pubLastOk"
+        [class.card-error]="!health.pubLastOk"
+      >
+        <span class="health-label">Last Publish</span>
+        <strong>
+          {{ health.pubLastOk ? 'Successful' : 'Failed' }}
+        </strong>
+      </div>
+
+      <div
+        [class.card-success]="health.diagPubFail === 0"
+        [class.card-warning]="health.diagPubFail > 0"
+      >
+        <span class="health-label">Publish Failures</span>
+        <strong>{{ health.diagPubFail }}</strong>
+      </div>
+
+      <div
+        [class.card-success]="health.diagReconnects === 0"
+        [class.card-warning]="health.diagReconnects > 0"
+      >
+        <span class="health-label">Reconnects</span>
+        <strong>{{ health.diagReconnects }}</strong>
+      </div>
+
+      <div
+        [class.card-success]="health.bufferFill === 0"
+        [class.card-warning]="health.bufferFill > 0"
+      >
+        <span class="health-label">Buffer Fill</span>
+        <strong>{{ health.bufferFill }}</strong>
+      </div>
+
+      <div
+        [class.card-success]="health.bufferDrops === 0"
+        [class.card-error]="health.bufferDrops > 0"
+      >
+        <span class="health-label">Buffer Drops</span>
+        <strong>{{ health.bufferDrops }}</strong>
+      </div>
+    </div>
+  </article>
+  }
+
+  @if (errorMessage()) {
+  <p>{{ errorMessage() }}</p>
+  }
+</section>

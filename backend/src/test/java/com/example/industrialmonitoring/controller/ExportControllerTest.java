@@ -1,5 +1,7 @@
 package com.example.industrialmonitoring.controller;
 
+import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.service.ExportFileService;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
 import com.example.industrialmonitoring.exception.GlobalExceptionHandler;
 import com.example.industrialmonitoring.exception.InvalidExportPeriodException;
@@ -25,14 +27,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ExportControllerTest {
 
     private ExportJobService exportJobService;
+    private ExportFileService exportFileService;
+    private ExportProperties exportProperties;
     private MockMvc mockMvc;
+
 
     @BeforeEach
     void setUp() {
         exportJobService = mock(ExportJobService.class);
+        exportFileService = mock(ExportFileService.class);
+        exportProperties = mock(ExportProperties.class);
 
         ExportController exportController =
-                new ExportController(exportJobService);
+                new ExportController(
+                        exportJobService,
+                        exportFileService,
+                        exportProperties
+                );
 
         mockMvc = MockMvcBuilders
                 .standaloneSetup(exportController)
@@ -41,7 +52,6 @@ class ExportControllerTest {
                 )
                 .build();
     }
-
     @Test
     void shouldStartRangeExport()
             throws Exception {

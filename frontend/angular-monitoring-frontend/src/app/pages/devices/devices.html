@@ -1,0 +1,135 @@
+<section class="devices-page">
+  <h2>Registered Devices</h2>
+
+  @if (isLoading()) {
+  <p>Loading devices...</p>
+  } @else if (errorMessage()) {
+  <p>{{ errorMessage() }}</p>
+  } @else if (devices().length === 0) {
+  <p>No devices available.</p>
+  } @else {
+  <table>
+    <thead>
+    <tr>
+      <th>ID</th>
+      <th>Device ID</th>
+      <th>Registered At</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    @for (device of devices(); track device.id) {
+    <tr>
+      <td>{{ device.id }}</td>
+      <td>{{ device.deviceId }}</td>
+      <td>
+        {{ device.createdAt | date:'dd.MM.yyyy, HH:mm' }}
+      </td>
+    </tr>
+    }
+    </tbody>
+  </table>
+  }
+
+  <section class="export-section">
+    <div class="export-header">
+      <div>
+        <h2>Data Export</h2>
+        <p>
+          Download a ZIP archive containing telemetry, health and event data
+          for the selected period.
+        </p>
+      </div>
+    </div>
+
+    <div class="export-form">
+      <div class="form-field">
+        <label for="from-date">From</label>
+
+        <input
+          id="from-date"
+          type="date"
+          [ngModel]="fromDate()"
+          (ngModelChange)="fromDate.set($event)"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="to-date">To</label>
+
+        <input
+          id="to-date"
+          type="date"
+          [ngModel]="toDate()"
+          (ngModelChange)="toDate.set($event)"
+        />
+      </div>
+
+      <button
+        type="button"
+        [disabled]="isExporting()"
+        (click)="createRangeExport()"
+      >
+        @if (isExporting()) {
+        Preparing download...
+        } @else {
+        Download ZIP Export
+        }
+      </button>
+    </div>
+
+    <p class="export-hint">
+      The start date and end date are both included in the export.
+    </p>
+
+    @if (exportMessage()) {
+    <p class="export-message export-success">
+      {{ exportMessage() }}
+    </p>
+    }
+
+    @if (exportError()) {
+    <p class="export-message export-error">
+      {{ exportError() }}
+    </p>
+    }
+  </section>
+
+  <section class="events-section">
+    <h2>Recent Events</h2>
+
+    @if (recentEvents().length === 0) {
+    <p>No events available.</p>
+    } @else {
+    <table>
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>Device</th>
+        <th>Event Type</th>
+        <th>Sequence</th>
+        <th>Received At</th>
+      </tr>
+      </thead>
+
+      <tbody>
+      @for (event of recentEvents(); track event.id) {
+      <tr>
+        <td>{{ event.id }}</td>
+        <td>{{ event.deviceId }}</td>
+        <td>
+                <span class="event-type">
+                  {{ event.eventType }}
+                </span>
+        </td>
+        <td>{{ event.sequenceNumber }}</td>
+        <td>
+          {{ event.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}
+        </td>
+      </tr>
+      }
+      </tbody>
+    </table>
+    }
+  </section>
+</section>
