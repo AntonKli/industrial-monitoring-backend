@@ -4,12 +4,19 @@ import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.export.ExportPeriod;
 import org.springframework.stereotype.Service;
 
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.io.OutputStream;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class ExportFileService {
@@ -102,6 +109,71 @@ public class ExportFileService {
             );
         }
     }
+    public void writeFinalExportAsZip(
+            ExportPeriod period,
+            OutputStream outputStream
+    ) {
+        Path directory = finalDirectory(period);
+
+        if (!Files.isDirectory(directory)) {
+            throw new IllegalStateException(
+                    "Final export directory does not exist: "
+                            + directory
+            );
+        }
+
+        try (Stream<Path> pathStream = Files.list(directory)) {
+            List<Path> csvFiles = pathStream
+                    .filter(path ->
+                            Files.isRegularFile(path)
+                                    && path.getFileName()
+                                    .toString()
+                                    .endsWith(".csv")
+                    )
+                    .sorted()
+                    .collect(Collectors.toList());
+
+            if (csvFiles.isEmpty()) {
+                throw new IllegalStateException(
+                        "Final export directory contains no CSV files: "
+                                + directory
+                );
+            }
+
+            OutputStream nonClosingOutputStream =
+                    new FilterOutputStream(outputStream) {
+
+                        @Override
+                        public void close() throws IOException {
+                            flush();
+                        }
+                    };
+
+            try (
+                    ZipOutputStream zipOutputStream =
+                            new ZipOutputStream(
+                                    nonClosingOutputStream
+                            )
+            ) {
+                for (Path csvFile : csvFiles) {
+                    ZipEntry zipEntry = new ZipEntry(
+                            csvFile.getFileName().toString()
+                    );
+
+                    zipOutputStream.putNextEntry(zipEntry);
+                    Files.copy(csvFile, zipOutputStream);
+                    zipOutputStream.closeEntry();
+                }
+            }
+        } catch (IOException exception) {
+            throw new UncheckedIOException(
+                    "Could not create ZIP archive for export "
+                            + period.exportKey(),
+                    exception
+            );
+        }
+    }
+
 
     /*
      * Temporary compatibility adapters.
