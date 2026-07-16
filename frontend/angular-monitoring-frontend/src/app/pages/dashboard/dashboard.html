@@ -50,6 +50,48 @@
   <p>Loading telemetry data...</p>
   }
 
+  @if (latestHealth(); as health) {
+  <article class="health-details">
+    <h3>Device Health</h3>
+
+    <div class="health-grid">
+      <div>
+        <span class="health-label">MQTT Connection</span>
+        <strong>
+          {{ health.mqttConnected ? 'Connected' : 'Disconnected' }}
+        </strong>
+      </div>
+
+      <div>
+        <span class="health-label">Last Publish</span>
+        <strong>
+          {{ health.pubLastOk ? 'Successful' : 'Failed' }}
+        </strong>
+      </div>
+
+      <div>
+        <span class="health-label">Publish Failures</span>
+        <strong>{{ health.diagPubFail }}</strong>
+      </div>
+
+      <div>
+        <span class="health-label">Reconnects</span>
+        <strong>{{ health.diagReconnects }}</strong>
+      </div>
+
+      <div>
+        <span class="health-label">Buffer Fill</span>
+        <strong>{{ health.bufferFill }}</strong>
+      </div>
+
+      <div>
+        <span class="health-label">Buffer Drops</span>
+        <strong>{{ health.bufferDrops }}</strong>
+      </div>
+    </div>
+  </article>
+  }
+
   @if (errorMessage()) {
   <p>{{ errorMessage() }}</p>
   }

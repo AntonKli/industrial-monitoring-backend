@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import {
   BackendHealth,
   Device,
+  DeviceHealth,
   MonitoringApi,
   Telemetry
 } from '../../services/monitoring-api';
@@ -21,6 +22,7 @@ export class Dashboard implements OnInit {
   protected readonly errorMessage = signal('');
   protected readonly deviceCount = signal(0);
   protected readonly latestTelemetry = signal<Telemetry | null>(null);
+  protected readonly latestHealth = signal<DeviceHealth | null>(null);
 
   ngOnInit(): void {
     this.monitoringApi.getBackendHealth().subscribe({
@@ -46,6 +48,14 @@ export class Dashboard implements OnInit {
       },
       error: () => {
         this.errorMessage.set('Telemetry data could not be loaded.');
+      }
+    });
+    this.monitoringApi.getLatestHealth().subscribe({
+      next: (health: DeviceHealth) => {
+        this.latestHealth.set(health);
+      },
+      error: () => {
+        this.errorMessage.set('Device health data could not be loaded.');
       }
     });
   }

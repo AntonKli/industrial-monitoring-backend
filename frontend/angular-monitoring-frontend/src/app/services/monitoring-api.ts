@@ -11,6 +11,7 @@ export interface Device {
   deviceId: string;
   createdAt: string;
 }
+
 export interface Telemetry {
   id: number;
   deviceId: string;
@@ -18,6 +19,24 @@ export interface Telemetry {
   sequenceNumber: number;
   temperatureC: number;
   rpm: number;
+  createdAt: string;
+}
+
+export interface DeviceHealth {
+  id: number;
+  deviceId: string;
+  gatewayTimestamp: number;
+  sequenceNumber: number;
+  state: number;
+  mqttConnected: boolean;
+  pubLastOk: boolean;
+  bufferFill: number;
+  bufferDrops: number;
+  diagPubOk: number;
+  diagPubFail: number;
+  diagReconnects: number;
+  diagLastError: number;
+  diagUptimeS: number;
   createdAt: string;
 }
 
@@ -34,7 +53,12 @@ export class MonitoringApi {
   getDevices(): Observable<Device[]> {
     return this.http.get<Device[]>('/api/devices');
   }
+
   getLatestTelemetry(): Observable<Telemetry> {
     return this.http.get<Telemetry>('/api/telemetry/latest');
+  }
+
+  getLatestHealth(): Observable<DeviceHealth> {
+    return this.http.get<DeviceHealth>('/api/health/latest');
   }
 }
