@@ -22,10 +22,50 @@
     <tr>
       <td>{{ device.id }}</td>
       <td>{{ device.deviceId }}</td>
-      <td>{{ device.createdAt | date:'dd.MM.yyyy, HH:mm' }}</td>
+      <td>
+        {{ device.createdAt | date:'dd.MM.yyyy, HH:mm' }}
+      </td>
     </tr>
     }
     </tbody>
   </table>
   }
+
+  <section class="events-section">
+    <h2>Recent Events</h2>
+
+    @if (recentEvents().length === 0) {
+    <p>No events available.</p>
+    } @else {
+    <table>
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>Device</th>
+        <th>Event Type</th>
+        <th>Sequence</th>
+        <th>Received At</th>
+      </tr>
+      </thead>
+
+      <tbody>
+      @for (event of recentEvents(); track event.id) {
+      <tr>
+        <td>{{ event.id }}</td>
+        <td>{{ event.deviceId }}</td>
+        <td>
+                <span class="event-type">
+                  {{ event.eventType }}
+                </span>
+        </td>
+        <td>{{ event.sequenceNumber }}</td>
+        <td>
+          {{ event.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}
+        </td>
+      </tr>
+      }
+      </tbody>
+    </table>
+    }
+  </section>
 </section>

@@ -39,6 +39,14 @@ export interface DeviceHealth {
   diagUptimeS: number;
   createdAt: string;
 }
+export interface MonitoringEvent {
+  id: number;
+  deviceId: string;
+  gatewayTimestamp: number;
+  sequenceNumber: number;
+  eventType: string;
+  createdAt: string;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -60,5 +68,8 @@ export class MonitoringApi {
 
   getLatestHealth(): Observable<DeviceHealth> {
     return this.http.get<DeviceHealth>('/api/health/latest');
+  }
+  getEvents(): Observable<MonitoringEvent[]> {
+    return this.http.get<MonitoringEvent[]>('/api/events');
   }
 }
