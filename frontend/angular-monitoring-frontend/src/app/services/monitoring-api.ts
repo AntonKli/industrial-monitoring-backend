@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -47,6 +47,13 @@ export interface MonitoringEvent {
   eventType: string;
   createdAt: string;
 }
+export interface ExportPeriodJobResponse {
+  executionId: number;
+  jobName: string;
+  fromDate: string;
+  toDateExclusive: string;
+  status: string;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -72,4 +79,38 @@ export class MonitoringApi {
   getEvents(): Observable<MonitoringEvent[]> {
     return this.http.get<MonitoringEvent[]>('/api/events');
   }
-}
+
+  createRangeExport(
+    fromDate: string,
+    toDateExclusive: string
+  ): Observable<ExportPeriodJobResponse> {
+    return this.http.post<ExportPeriodJobResponse>(
+      '/api/exports/range',
+      null,
+      {
+        params: {
+          from: fromDate,
+          to: toDateExclusive
+        }
+      }
+    );
+    }
+    downloadRangeExport(
+      fromDate: string,
+      toDateExclusive: string
+    ): Observable<HttpResponse<Blob>> {
+      return this.http.post(
+        '/api/exports/range/download',
+        null,
+        {
+          params: {
+            from: fromDate,
+            to: toDateExclusive
+          },
+          observe: 'response',
+          responseType: 'blob'
+        }
+      );
+    }
+  }
+

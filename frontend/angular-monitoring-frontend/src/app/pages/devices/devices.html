@@ -31,6 +31,70 @@
   </table>
   }
 
+  <section class="export-section">
+    <div class="export-header">
+      <div>
+        <h2>Data Export</h2>
+        <p>
+          Create a CSV export containing telemetry, health and event data
+          for the selected period.
+        </p>
+      </div>
+    </div>
+
+    <div class="export-form">
+      <div class="form-field">
+        <label for="from-date">From</label>
+
+        <input
+          id="from-date"
+          type="date"
+          [ngModel]="fromDate()"
+          (ngModelChange)="fromDate.set($event)"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="to-date">To</label>
+
+        <input
+          id="to-date"
+          type="date"
+          [ngModel]="toDate()"
+          (ngModelChange)="toDate.set($event)"
+        />
+      </div>
+
+      <button
+        type="button"
+        [disabled]="isExporting()"
+        (click)="createRangeExport()"
+      >
+        @if (isExporting()) {
+        Preparing download...
+        } @else {
+        Download ZIP Export
+        }
+      </button>
+    </div>
+
+    <p class="export-hint">
+      The start date and end date are both included in the export.
+    </p>
+
+    @if (exportMessage()) {
+    <p class="export-message export-success">
+      {{ exportMessage() }}
+    </p>
+    }
+
+    @if (exportError()) {
+    <p class="export-message export-error">
+      {{ exportError() }}
+    </p>
+    }
+  </section>
+
   <section class="events-section">
     <h2>Recent Events</h2>
 

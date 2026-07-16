@@ -105,8 +105,10 @@
 .health-grid > div {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   padding: 16px;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: #f8fafc;
 }
@@ -122,4 +124,22 @@
 .health-grid strong {
   color: #1f2937;
   font-size: 18px;
+}
+
+.status-card.card-success,
+.health-grid > div.card-success {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.status-card.card-warning,
+.health-grid > div.card-warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.status-card.card-error,
+.health-grid > div.card-error {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.09);
 }
