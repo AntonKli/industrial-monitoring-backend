@@ -129,7 +129,7 @@ export class Devices implements OnInit {
           );
 
           this.exportMessage.set(
-            `ZIP export "${fileName}" was downloaded successfully.`
+            `ZIP export "${fileName}" is ready for download.`
           );
         },
         error: () => {
