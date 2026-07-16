@@ -1,0 +1,56 @@
+<section class="dashboard">
+  <h2>System Overview</h2>
+
+  <div class="status-grid">
+    <article class="status-card">
+      <h3>Backend Status</h3>
+      <p>{{ backendStatus() }}</p>
+    </article>
+
+    <article class="status-card">
+      <h3>Registered Devices</h3>
+      <p>{{ deviceCount() }}</p>
+    </article>
+
+    @if (latestTelemetry(); as telemetry) {
+    <article class="status-card">
+      <h3>Temperature</h3>
+      <p>{{ telemetry.temperatureC }} °C</p>
+    </article>
+
+    <article class="status-card">
+      <h3>Motor Speed</h3>
+      <p>{{ telemetry.rpm }} RPM</p>
+    </article>
+    }
+  </div>
+
+  @if (latestTelemetry(); as telemetry) {
+  <article class="telemetry-details">
+    <h3>Latest Telemetry</h3>
+
+    <dl>
+      <div>
+        <dt>Device</dt>
+        <dd>{{ telemetry.deviceId }}</dd>
+      </div>
+
+      <div>
+        <dt>Sequence</dt>
+        <dd>{{ telemetry.sequenceNumber }}</dd>
+      </div>
+
+      <div>
+        <dt>Received At</dt>
+        <dd>{{ telemetry.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}</dd>
+      </div>
+    </dl>
+  </article>
+  } @else {
+  <p>Loading telemetry data...</p>
+  }
+
+  @if (errorMessage()) {
+  <p>{{ errorMessage() }}</p>
+  }
+</section>

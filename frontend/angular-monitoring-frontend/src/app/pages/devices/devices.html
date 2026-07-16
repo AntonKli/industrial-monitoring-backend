@@ -1,0 +1,31 @@
+<section class="devices-page">
+  <h2>Registered Devices</h2>
+
+  @if (isLoading()) {
+  <p>Loading devices...</p>
+  } @else if (errorMessage()) {
+  <p>{{ errorMessage() }}</p>
+  } @else if (devices().length === 0) {
+  <p>No devices available.</p>
+  } @else {
+  <table>
+    <thead>
+    <tr>
+      <th>ID</th>
+      <th>Device ID</th>
+      <th>Registered At</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    @for (device of devices(); track device.id) {
+    <tr>
+      <td>{{ device.id }}</td>
+      <td>{{ device.deviceId }}</td>
+      <td>{{ device.createdAt | date:'dd.MM.yyyy, HH:mm' }}</td>
+    </tr>
+    }
+    </tbody>
+  </table>
+  }
+</section>
