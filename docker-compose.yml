@@ -11,6 +11,19 @@ services:
     volumes:
       - industrial_monitoring_postgres_data:/var/lib/postgresql/data
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    container_name: industrial-monitoring-keycloak
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "8180:8080"
+    volumes:
+      - industrial_monitoring_keycloak_data:/opt/keycloak/data
+    mem_limit: 1g
+
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: industrial-monitoring-mosquitto
@@ -70,3 +83,4 @@ services:
 
 volumes:
   industrial_monitoring_postgres_data:
+  industrial_monitoring_keycloak_data:
