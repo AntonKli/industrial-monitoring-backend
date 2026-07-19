@@ -45,6 +45,7 @@ services:
     depends_on:
       - postgres
       - mosquitto
+      - keycloak
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/industrial_monitoring
       DB_USERNAME: ${DB_USERNAME}
@@ -60,6 +61,8 @@ services:
       EXPORT_CHUNK_SIZE: "${EXPORT_CHUNK_SIZE:-100}"
       EXPORT_CRON: "${EXPORT_CRON:-0 0 2 1 1 *}"
       EXPORT_ZONE: "${EXPORT_ZONE:-Europe/Berlin}"
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/industrial-monitoring
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/industrial-monitoring/protocol/openid-connect/certs
     ports:
       - "8080:8080"
     volumes:

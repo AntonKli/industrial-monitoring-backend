@@ -8,6 +8,13 @@
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/industrial-monitoring}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8180/realms/industrial-monitoring/protocol/openid-connect/certs}
+
   jpa:
     hibernate:
       ddl-auto: validate

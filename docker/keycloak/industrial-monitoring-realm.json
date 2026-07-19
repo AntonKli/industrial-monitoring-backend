@@ -57,6 +57,7 @@
       "emailVerified": true,
       "firstName": "Monitoring",
       "lastName": "Viewer",
+      "email": "monitoring-viewer@example.com",
       "realmRoles": [
         "VIEWER"
       ],
@@ -74,6 +75,7 @@
       "emailVerified": true,
       "firstName": "Monitoring",
       "lastName": "Operator",
+      "email": "monitoring-operator@example.com",
       "realmRoles": [
         "VIEWER",
         "OPERATOR"
@@ -92,6 +94,7 @@
       "emailVerified": true,
       "firstName": "Monitoring",
       "lastName": "Auditor",
+      "email": "monitoring-auditor@example.com",
       "realmRoles": [
         "VIEWER",
         "AUDITOR"
@@ -110,6 +113,7 @@
       "emailVerified": true,
       "firstName": "Monitoring",
       "lastName": "Administrator",
+      "email": "monitoring-admin@example.com",
       "realmRoles": [
         "VIEWER",
         "OPERATOR",
