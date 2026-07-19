@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -77,7 +78,9 @@ class HealthControllerIntegrationTest {
     @Test
     void shouldReturnAllHealthRecords() throws Exception {
         mockMvc.perform(get("/api/health")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -99,7 +102,9 @@ class HealthControllerIntegrationTest {
     @Test
     void shouldReturnLatestHealthRecord() throws Exception {
         mockMvc.perform(get("/api/health/latest")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deviceId").value("edge01"))
@@ -113,7 +118,9 @@ class HealthControllerIntegrationTest {
     @Test
     void shouldReturnHealthRecordsByDeviceId() throws Exception {
         mockMvc.perform(get("/api/health/device/edge01")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))

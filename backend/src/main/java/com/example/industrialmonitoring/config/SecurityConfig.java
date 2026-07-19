@@ -23,7 +23,17 @@ public class SecurityConfig {
                                 "/actuator/info",
                                 "/actuator/prometheus"
                         ).permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/exports/**")
+                        .hasRole("OPERATOR")
+                        .requestMatchers(
+                                "/api/devices/**",
+                                "/api/telemetry/**",
+                                "/api/health/**",
+                                "/api/events/**"
+                        )
+                        .hasRole("VIEWER")
+                        .anyRequest()
+                        .authenticated()
                 )
                 .oauth2ResourceServer(oauth2 ->
                         oauth2.jwt(jwt ->

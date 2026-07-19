@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.math.BigDecimal;
 
@@ -70,7 +71,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnAllTelemetryRecords() throws Exception {
         mockMvc.perform(get("/api/telemetry")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -84,7 +87,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnLatestTelemetryRecord() throws Exception {
         mockMvc.perform(get("/api/telemetry/latest")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deviceId").value("edge01"))
@@ -97,7 +102,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnTelemetryRecordsByDeviceId() throws Exception {
         mockMvc.perform(get("/api/telemetry/device/edge01")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -109,7 +116,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnPagedTelemetryRecords() throws Exception {
         mockMvc.perform(get("/api/telemetry/paged")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .param("page", "0")
                         .param("size", "10")
                         .accept(MediaType.APPLICATION_JSON))
@@ -126,7 +135,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnPagedTelemetryRecordsByDeviceId() throws Exception {
         mockMvc.perform(get("/api/telemetry/device/edge01/paged")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .param("page", "0")
                         .param("size", "10")
                         .accept(MediaType.APPLICATION_JSON))
@@ -143,7 +154,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnTelemetryRecordsByDeviceIdAndTimeRange() throws Exception {
         mockMvc.perform(get("/api/telemetry/device/edge01/range")
-                        .with(jwt())
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .param("from", "2000-01-01T00:00:00Z")
                         .param("to", "2100-01-01T00:00:00Z")
                         .param("page", "0")
