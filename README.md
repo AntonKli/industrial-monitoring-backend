@@ -1,6 +1,10 @@
 # Industrial Monitoring Platform
 
-A full-stack monitoring platform built with Java 21, Spring Boot 3.5.15 and Angular 21. It receives telemetry, event and health data from a CODESYS edge gateway through MQTT, stores the data in PostgreSQL, visualizes the current system state, exposes REST and monitoring endpoints, and creates scheduled or on-demand CSV exports with Spring Batch.
+A full-stack monitoring platform built with Java 21, Spring Boot 3.5.15 and Angular 21.
+
+The platform receives telemetry, event and health data from a CODESYS edge gateway through MQTT, stores the data in PostgreSQL and displays the current system state in an Angular frontend. Spring Batch creates scheduled or manually requested CSV exports.
+
+Authentication and role-based access control are provided by Keycloak.
 
 ## Related Project
 
@@ -10,11 +14,18 @@ A full-stack monitoring platform built with Java 21, Spring Boot 3.5.15 and Angu
 
 ## Overview
 
-Industrial devices publish telemetry, event and health messages through MQTT. The Spring Boot backend validates the messages, automatically registers devices and persists the received data in PostgreSQL.
+Industrial devices publish monitoring data through MQTT. The Spring Boot backend validates incoming messages, automatically registers devices and persists the records in PostgreSQL.
 
-The Angular frontend consumes the REST API and displays backend availability, current telemetry, device diagnostics, registered devices and recent events. Users can select complete calendar days and download telemetry, health and event data as a ZIP archive containing three CSV files.
+The Angular frontend displays:
 
-Prometheus and Grafana provide operational monitoring, while Spring Batch handles scheduled yearly exports and manually selected date ranges.
+* backend availability
+* registered devices
+* current telemetry values
+* device-health information
+* recent events
+* date-range export downloads
+
+Prometheus and Grafana provide operational monitoring. Spring Batch processes yearly and manually selected export periods.
 
 ---
 
@@ -32,7 +43,7 @@ Industrial Edge Gateway
 Eclipse Mosquitto
         |
         v
-Spring Boot Backend
+Spring Boot Backend <------> Keycloak
         |
         +--> PostgreSQL
         |
@@ -41,15 +52,10 @@ Spring Boot Backend
         |       v
         |   Angular Frontend
         |
-        +--> OpenAPI / Swagger UI
-        |
-        +--> Actuator / Prometheus Metrics
+        +--> Actuator / Prometheus
         |       |
         |       v
-        |   Prometheus
-        |       |
-        |       v
-        |    Grafana
+        |   Prometheus --> Grafana
         |
         +--> Spring Batch
                 |
@@ -61,19 +67,21 @@ Spring Boot Backend
 
 ## Key Features
 
-- MQTT ingestion for telemetry, event and health messages
-- Integration with a CODESYS-based industrial edge gateway
-- Automatic device registration and PostgreSQL persistence
-- REST endpoints for devices, telemetry, events and health data
-- Angular dashboard with current backend status, telemetry and device-health information
-- Registered-device and recent-event views
-- Browser download of ZIP archives containing three CSV files
-- Scheduled yearly and manual date-range exports with Spring Batch
-- Chunk-based processing, persistent batch metadata and duplicate protection
-- Staging-to-publication workflow that exposes only completed exports
-- OpenAPI documentation, Actuator, Prometheus and Grafana
-- Docker Compose development environment
-- Automated backend tests and GitHub Actions continuous integration
+* MQTT ingestion for telemetry, event and health messages
+* Integration with a CODESYS-based industrial edge gateway
+* Automatic device registration
+* PostgreSQL persistence with Flyway migrations
+* REST API for monitoring data
+* Angular dashboard with device, telemetry, health and event views
+* Keycloak login using Authorization Code Flow with PKCE
+* JWT-based backend authentication
+* Role-based access control for monitoring and export operations
+* Scheduled yearly exports
+* Manual date-range exports as ZIP archives
+* Spring Batch metadata and duplicate protection
+* OpenAPI, Actuator, Prometheus and Grafana
+* Docker Compose development environment
+* Automated backend tests and GitHub Actions
 
 ---
 
@@ -81,19 +89,19 @@ Spring Boot Backend
 
 ### Backend
 
-Java 21 · Spring Boot 3.5.15 · Spring Batch · Spring Data JPA · Hibernate · Flyway
+Java 21 · Spring Boot 3.5.15 · Spring Security · OAuth2 Resource Server · Spring Batch · Spring Data JPA · Hibernate · Flyway
 
 ### Frontend
 
-Angular 21 · TypeScript · Standalone Components · Angular Signals · Angular Router · Angular HttpClient · SCSS
+Angular 21 · TypeScript · Standalone Components · Angular Signals · Angular Router · Angular HttpClient · Keycloak Angular · SCSS
 
 ### Data and Messaging
 
 PostgreSQL 16 · MQTT · Eclipse Paho · Eclipse Mosquitto
 
-### Monitoring and Infrastructure
+### Infrastructure and Monitoring
 
-Spring Boot Actuator · Prometheus · Grafana · Docker · Docker Compose · Maven · GitHub Actions
+Keycloak · Spring Boot Actuator · Prometheus · Grafana · Docker · Docker Compose · Maven · GitHub Actions
 
 ### Testing and Documentation
 
@@ -101,9 +109,42 @@ JUnit 5 · Mockito · MockMvc · Testcontainers · OpenAPI 3 · Swagger UI
 
 ---
 
+## Authentication and Roles
+
+The Angular frontend redirects unauthenticated users to Keycloak. After login, the access token is attached to requests targeting `/api/**`.
+
+Configured Keycloak components:
+
+```text
+Realm:           industrial-monitoring
+Frontend client: industrial-monitoring-frontend
+Backend audience: industrial-monitoring-api
+```
+
+Available realm roles:
+
+```text
+VIEWER
+OPERATOR
+AUDITOR
+ADMIN
+```
+
+Current access rules:
+
+| Resource                                       | Required role |
+| ---------------------------------------------- | ------------- |
+| Devices, telemetry, health and events          | `VIEWER`      |
+| Export endpoints                               | `OPERATOR`    |
+| Health, info and Prometheus actuator endpoints | Public        |
+
+The configured application users combine these roles according to their responsibilities.
+
+---
+
 ## MQTT Integration
 
-The backend subscribes to these topic patterns:
+The backend subscribes to:
 
 ```text
 rtz/+/telemetry
@@ -123,7 +164,7 @@ Example telemetry message:
 }
 ```
 
-Example device topics:
+Example topics:
 
 ```text
 rtz/edge01/telemetry
@@ -135,20 +176,26 @@ rtz/edge01/health
 
 ## REST API
 
-```text
-GET  /api/devices
-GET  /api/telemetry/latest
-GET  /api/telemetry/paged?page=0&size=50
-GET  /api/telemetry/device/{deviceId}/range
-GET  /api/events
-GET  /api/health/latest
+Monitoring endpoints:
 
+```text
+GET /api/devices
+GET /api/telemetry/latest
+GET /api/telemetry/paged?page=0&size=50
+GET /api/telemetry/device/{deviceId}/range
+GET /api/events
+GET /api/health/latest
+```
+
+Export endpoints:
+
+```text
 POST /api/exports/yearly?year={year}
 POST /api/exports/range?from={from}&to={to}
 POST /api/exports/range/download?from={from}&to={to}
 ```
 
-Complete endpoint documentation is available through Swagger UI at:
+Swagger UI:
 
 ```text
 http://localhost:8080/swagger-ui.html
@@ -158,37 +205,43 @@ http://localhost:8080/swagger-ui.html
 
 ## CSV and ZIP Exports
 
-Spring Batch creates separate CSV files for telemetry, events and health records. Exports can cover a completed calendar year or a manually selected date range.
+Spring Batch creates separate CSV files for:
 
-The processing flow uses configurable chunks and writes files to a staging directory first. An export is published only after every batch step completes successfully. The browser download endpoint then streams the completed CSV files as a ZIP archive.
+```text
+telemetry
+events
+health
+```
 
-The backend uses an exclusive end date. The Angular frontend presents both selected days as inclusive and internally sends the following calendar day as the backend end date.
+Exports can cover a completed calendar year or a manually selected date range. Completed files are published only after all batch steps finish successfully.
 
-For batch flow, validation rules, error responses, configuration, idempotency and API examples, see the [detailed export documentation](docs/export-documentation.md).
+The Angular frontend downloads the three CSV files as one ZIP archive.
 
-> CSV exports are application-level data archives. They do not replace physical PostgreSQL backup and recovery procedures.
+Detailed information about the batch flow, validation, configuration, error handling and idempotency is available in:
+
+[Export Documentation](docs/export-documentation.md)
+
+> CSV exports are application-level data archives and do not replace PostgreSQL backup and recovery procedures.
 
 ---
 
-## Angular Monitoring Frontend
-
-The standalone Angular application provides a user-oriented view of the monitoring data exposed by the backend.
+## Angular Frontend
 
 ### Dashboard
 
-The dashboard displays backend availability, registered-device count, latest temperature and motor speed, telemetry metadata and device diagnostics.
+The dashboard displays backend availability, registered-device count, current temperature, motor speed and device diagnostics.
 
 ![Angular Monitoring Dashboard](docs/images/angular-dashboard.png)
 
 ### Devices and Events
 
-The devices page displays registered devices, a date-range export form and the five most recent monitoring events.
+The devices page displays registered devices, recent events and the date-range export form.
 
 ![Angular Devices and Events](docs/images/angular-devices.png)
 
-### ZIP Export Download
+### ZIP Export
 
-The selected period is downloaded as one ZIP archive containing telemetry, health and event CSV files.
+Authorized users can download a selected period as a ZIP archive.
 
 ![Angular ZIP Export Download](docs/images/angular-export-download.png)
 
@@ -198,16 +251,21 @@ The screenshots use data generated by the CODESYS and MQTT test setup.
 
 ## Operational Monitoring
 
-The backend exposes health information and custom ingestion metrics through Spring Boot Actuator and Prometheus.
+Public actuator endpoints:
 
 ```text
 GET /actuator/health
 GET /actuator/info
-GET /actuator/metrics
 GET /actuator/prometheus
 ```
 
-Custom metrics:
+Additional metrics are available through:
+
+```text
+GET /actuator/metrics
+```
+
+Custom ingestion metrics:
 
 ```text
 industrial_telemetry_records_saved_total
@@ -225,26 +283,26 @@ industrial_health_records_saved_total
 
 ### Requirements
 
-- Docker Desktop or Docker Engine
-- Docker Compose
-- Node.js and npm
-- Git
+* Docker Desktop or Docker Engine
+* Docker Compose
+* Node.js and npm
+* Git
 
 ### 1. Configure the Environment
 
-#### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-#### Linux or macOS
+Linux or macOS:
 
 ```bash
 cp .env.example .env
 ```
 
-Replace the placeholder credentials in `.env`. The file is excluded from Git.
+The local `.env` provides credentials and environment-specific configuration.
 
 ### 2. Start the Backend Stack
 
@@ -257,6 +315,7 @@ Services:
 ```text
 Backend API:  http://localhost:8080
 Swagger UI:   http://localhost:8080/swagger-ui.html
+Keycloak:     http://localhost:8180
 Prometheus:   http://localhost:19090
 Grafana:      http://localhost:13000
 Mosquitto:    localhost:1884
@@ -277,9 +336,11 @@ Open:
 http://localhost:4200
 ```
 
-The development proxy forwards `/api/**` and `/actuator/**` requests to the backend on port `8080`. The Angular frontend is currently started separately and is not part of the Docker Compose stack.
+The Angular development proxy forwards `/api/**` and `/actuator/**` requests to the backend.
 
-### Stop the Backend Stack
+The frontend runs separately from the Docker Compose stack.
+
+### Stop the Stack
 
 ```bash
 docker compose down
@@ -291,21 +352,19 @@ docker compose down
 
 ### Backend
 
-#### Windows
+Windows:
 
 ```powershell
 cd backend
 .\mvnw.cmd clean test
 ```
 
-#### Linux or macOS
+Linux or macOS:
 
 ```bash
 cd backend
 ./mvnw clean test
 ```
-
-The test suite covers application startup, Flyway migrations, repositories, ingestion services, REST controllers, export validation, file handling, scheduling and duplicate protection.
 
 ### Frontend
 
@@ -332,7 +391,7 @@ V1  Application tables
 V2  Spring Batch metadata tables and sequences
 ```
 
-Hibernate validates the Flyway-managed schema and does not create or update tables automatically.
+Hibernate validates the Flyway-managed schema.
 
 ---
 
@@ -349,16 +408,14 @@ industrial-monitoring-backend/
 ├── frontend/
 │   └── angular-monitoring-frontend/
 ├── docker/
+│   ├── keycloak/
+│   │   └── industrial-monitoring-realm.json
 │   └── mosquitto/
 ├── monitoring/
 │   └── prometheus/
 ├── docs/
 │   ├── export-documentation.md
 │   └── images/
-│       ├── angular-dashboard.png
-│       ├── angular-devices.png
-│       ├── angular-export-download.png
-│       └── grafana-dashboard.png
 ├── .env.example
 ├── docker-compose.yml
 └── README.md

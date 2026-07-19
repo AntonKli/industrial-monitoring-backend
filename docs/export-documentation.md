@@ -1,6 +1,6 @@
 # Export Documentation
 
-This document describes the Spring Batch export workflow, date handling, API endpoints, validation, error responses and configuration used by the Industrial Monitoring Platform.
+This document describes the Spring Batch export workflow, date handling, API behavior, validation, error responses and configuration used by the Industrial Monitoring Platform.
 
 [Back to the main README](../README.md)
 
@@ -8,18 +8,44 @@ This document describes the Spring Batch export workflow, date handling, API end
 
 ## Overview
 
-The backend creates application-level CSV archives for stored telemetry, event and health records.
+The backend creates CSV exports for stored telemetry, event and health records.
 
 Two export modes are available:
 
-- Scheduled or manually triggered exports of completed calendar years
-- Manually triggered exports for freely selected date ranges
+* Scheduled or manually triggered exports of completed calendar years
+* Manually triggered exports for selected date ranges
 
 Both modes use the same Spring Batch job, readers, writers, staging workflow and publication process.
 
-For browser downloads, the backend streams the three completed CSV files as a ZIP archive. Existing completed exports are reused, allowing the same period to be downloaded repeatedly without starting the same batch job again.
+For browser downloads, the backend streams the three completed CSV files as a ZIP archive. If a completed export already exists for the selected period, the download endpoint reuses it instead of starting the batch job again.
 
-> These exports do not replace physical PostgreSQL backup and recovery procedures.
+> These exports do not replace PostgreSQL backup and recovery procedures.
+
+---
+
+## Authentication and Authorization
+
+All export endpoints require a valid Keycloak access token.
+
+```text
+Required realm role: OPERATOR
+```
+
+The configured `monitoring-operator` and `monitoring-admin` users have this role.
+
+A user who is not authenticated receives:
+
+```text
+401 Unauthorized
+```
+
+An authenticated user without the `OPERATOR` role receives:
+
+```text
+403 Forbidden
+```
+
+For example, `monitoring-viewer` can access monitoring data but cannot start or download exports.
 
 ---
 
@@ -30,6 +56,8 @@ POST /api/exports/yearly?year={year}
 POST /api/exports/range?from={from}&to={to}
 POST /api/exports/range/download?from={from}&to={to}
 ```
+
+The `to` parameter is always interpreted as an exclusive end date.
 
 ---
 
@@ -53,11 +81,17 @@ to:   2026-04-01
 
 This includes all records from October 1, 2025 through March 31, 2026. Records from April 1, 2026 are not included.
 
-Using an exclusive end date avoids ambiguous values such as `23:59:59.999999`.
+Using an exclusive end date avoids end-of-day values such as:
+
+```text
+23:59:59.999999
+```
 
 ### Angular Date Handling
 
-The Angular frontend presents both selected dates as inclusive. It adds one calendar day to the selected end date before sending the request to the backend.
+The Angular frontend presents both selected dates as inclusive.
+
+Before sending the request, it adds one calendar day to the selected end date.
 
 Example user selection:
 
@@ -95,7 +129,9 @@ createdAt >= 2026-01-01T00:00:00
 createdAt <  2027-01-01T00:00:00
 ```
 
-Only completed calendar years can be started through the yearly endpoint. Current-year data can be exported through the range endpoint.
+Only completed calendar years can be started through the yearly endpoint.
+
+Current-year data can be exported through the range endpoint.
 
 ---
 
@@ -105,11 +141,11 @@ A manual range export can use any valid date range, including ranges that cross 
 
 Valid ranges must meet these conditions:
 
-- `from` must be before `to`
-- `from` must not be earlier than `2000-01-01`
-- `to` must not be later than the next calendar day in the configured export time zone
+* `from` must be before `to`
+* `from` must not be earlier than `2000-01-01`
+* `to` must not be later than the next calendar day in the configured export time zone
 
-Allowing the next day as the exclusive end makes it possible to export the complete current day.
+Allowing the following day as the exclusive end date makes it possible to export the complete current day.
 
 ---
 
@@ -130,6 +166,8 @@ healthExportStep
         v
 finalizeAnnualExportStep
 ```
+
+The step names originate from the initial annual-export implementation. The same steps are also used for flexible date ranges.
 
 ### `prepareAnnualExportStep`
 
@@ -155,7 +193,7 @@ Publishes the export only after every previous step has completed successfully.
 
 ## Staging and Publication
 
-Files are initially written to a staging directory:
+Files are first written to a staging directory:
 
 ```text
 exports/
@@ -186,7 +224,9 @@ exports/
     └── health-export-2025.csv
 ```
 
-Incomplete exports are never exposed as completed archives. The generated `exports` directory is excluded from Git.
+An export is not moved out of the staging directory until all three CSV steps have completed successfully.
+
+The generated `exports` directory is excluded from Git.
 
 ---
 
@@ -199,6 +239,8 @@ The chunk size is configured through:
 ```text
 EXPORT_CHUNK_SIZE
 ```
+
+Each chunk is processed within a Spring Batch transaction.
 
 ---
 
@@ -216,9 +258,29 @@ zoneId
 
 Starting the same period again therefore refers to the same Spring Batch job instance.
 
-The ZIP download endpoint first checks whether a completed export already exists. When available, it reuses the published files instead of starting the same completed job again.
+The ZIP download endpoint first checks whether the final export directory already exists. If it does, the existing CSV files are reused.
 
-A partial current-year export does not block a later complete yearly export because the two exports use different date ranges.
+A partial current-year export does not block a later complete yearly export because the periods use different identifying parameters.
+
+---
+
+## Access Token in Command-Line Examples
+
+The following examples assume that a valid Keycloak access token has already been obtained.
+
+PowerShell:
+
+```powershell
+$token = "ACCESS_TOKEN"
+```
+
+Linux or macOS:
+
+```bash
+export TOKEN="ACCESS_TOKEN"
+```
+
+The Angular application obtains its access token through Authorization Code Flow with PKCE. Direct username-and-password token requests are not enabled for the frontend client.
 
 ---
 
@@ -231,6 +293,9 @@ Only completed calendar years are accepted.
 ```powershell
 Invoke-RestMethod `
   -Method Post `
+  -Headers @{
+    Authorization = "Bearer $token"
+  } `
   -Uri "http://localhost:8080/api/exports/yearly?year=2025" |
   ConvertTo-Json
 ```
@@ -239,6 +304,7 @@ Invoke-RestMethod `
 
 ```bash
 curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/exports/yearly?year=2025"
 ```
 
@@ -262,6 +328,9 @@ curl -X POST \
 ```powershell
 Invoke-RestMethod `
   -Method Post `
+  -Headers @{
+    Authorization = "Bearer $token"
+  } `
   -Uri "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01" |
   ConvertTo-Json
 ```
@@ -270,6 +339,7 @@ Invoke-RestMethod `
 
 ```bash
 curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01"
 ```
 
@@ -289,12 +359,13 @@ curl -X POST \
 
 ## ZIP Download
 
-The ZIP endpoint either reuses an existing completed export or creates the selected range before streaming the archive.
+The ZIP endpoint either reuses an existing completed export or starts the batch job before streaming the archive.
 
 ### PowerShell
 
 ```powershell
 curl.exe -X POST `
+  -H "Authorization: Bearer $token" `
   "http://localhost:8080/api/exports/range/download?from=2026-07-16&to=2026-07-17" `
   -o "monitoring-export-2026-07-16_to_2026-07-16.zip"
 ```
@@ -303,6 +374,7 @@ curl.exe -X POST `
 
 ```bash
 curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8080/api/exports/range/download?from=2026-07-16&to=2026-07-17" \
   --output "monitoring-export-2026-07-16_to_2026-07-16.zip"
 ```
@@ -315,17 +387,47 @@ health-export-2026-07-16_to_2026-07-17.csv
 telemetry-export-2026-07-16_to_2026-07-17.csv
 ```
 
-The archive name uses the inclusive period visible to the user. The internal CSV names retain the backend's exclusive end date.
+The downloaded ZIP name uses the inclusive period shown to the user:
+
+```text
+monitoring-export-2026-07-16_to_2026-07-16.zip
+```
+
+The CSV filenames currently use the backend's exclusive end date:
+
+```text
+2026-07-16_to_2026-07-17
+```
+
+This difference affects the displayed filenames only. The exported data uses the same half-open period in both cases.
 
 ---
 
 ## Error Responses
 
+### Missing or Invalid Access Token
+
+A request without a valid access token returns HTTP `401 Unauthorized`.
+
+```text
+WWW-Authenticate: Bearer
+```
+
+### Missing Operator Role
+
+An authenticated user without the `OPERATOR` role receives HTTP `403 Forbidden`.
+
+Example header:
+
+```text
+Bearer error="insufficient_scope"
+```
+
 ### Invalid Export Year
 
 A year before 2000 or later than the most recently completed calendar year returns HTTP `400 Bad Request`.
 
-Example response when the current year is 2026:
+Example for a request made during 2026:
 
 ```json
 {
@@ -353,7 +455,7 @@ An empty, reversed, pre-2000 or excessively future-dated range returns HTTP `400
 
 ### Export Conflict
 
-A running, completed or currently non-restartable export with the same identifying period returns HTTP `409 Conflict`.
+The yearly and range job-start endpoints can return HTTP `409 Conflict` when the same job instance is already running, already completed or cannot currently be restarted.
 
 ```json
 {
@@ -365,17 +467,19 @@ A running, completed or currently non-restartable export with the same identifyi
 }
 ```
 
+The ZIP download endpoint handles completed exports differently: it reuses the existing final directory instead of starting the same job again.
+
 ---
 
 ## Configuration
 
-| Variable | Default | Description |
-|---|---:|---|
-| `EXPORT_ENABLED` | `true` | Enables or disables the annual scheduler |
-| `EXPORT_OUTPUT_DIR` | `exports` | Base directory for generated CSV files |
-| `EXPORT_CHUNK_SIZE` | `100` | Records processed per transaction |
-| `EXPORT_CRON` | `0 0 2 1 1 *` | Scheduler cron expression |
-| `EXPORT_ZONE` | `Europe/Berlin` | Scheduler and export time zone |
+| Variable            |         Default | Description                              |
+| ------------------- | --------------: | ---------------------------------------- |
+| `EXPORT_ENABLED`    |          `true` | Enables or disables the annual scheduler |
+| `EXPORT_OUTPUT_DIR` |       `exports` | Base directory for generated CSV files   |
+| `EXPORT_CHUNK_SIZE` |           `100` | Records processed per transaction        |
+| `EXPORT_CRON`       |   `0 0 2 1 1 *` | Scheduler cron expression                |
+| `EXPORT_ZONE`       | `Europe/Berlin` | Scheduler and export time zone           |
 
 Default cron expression:
 
@@ -411,14 +515,14 @@ EXPORT_OUTPUT_DIR=/app/exports
 
 ## Export Test Coverage
 
-The automated backend tests cover:
+The backend test suite includes coverage for:
 
-- Annual and flexible export-period calculation
-- Date-range validation
-- Export file and directory management
-- CSV escaping and spreadsheet-formula protection
-- Spring Batch identifying parameters
-- Duplicate and conflict handling
-- Yearly scheduler calculation
-- Scheduler error handling
-- REST responses for successful, invalid and conflicting exports
+* Annual and flexible export-period calculation
+* Date-range validation
+* Export file and directory management
+* CSV escaping and spreadsheet-formula protection
+* Spring Batch identifying parameters
+* Duplicate and conflict handling
+* Yearly scheduler calculation
+* Scheduler error handling
+* REST responses for successful, invalid and conflicting exports
