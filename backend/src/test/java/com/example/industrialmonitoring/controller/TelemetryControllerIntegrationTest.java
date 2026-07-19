@@ -171,4 +171,20 @@ class TelemetryControllerIntegrationTest {
                 .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
+    @Test
+    void shouldRejectTelemetryRequestWithoutToken() throws Exception {
+        mockMvc.perform(
+                        get("/api/telemetry")
+                )
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldForbidTelemetryRequestWithoutViewerRole() throws Exception {
+        mockMvc.perform(
+                        get("/api/telemetry")
+                                .with(jwt())
+                )
+                .andExpect(status().isForbidden());
+    }
 }
