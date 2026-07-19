@@ -14,12 +14,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.math.BigDecimal;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -69,6 +71,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnAllTelemetryRecords() throws Exception {
         mockMvc.perform(get("/api/telemetry")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -82,6 +87,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnLatestTelemetryRecord() throws Exception {
         mockMvc.perform(get("/api/telemetry/latest")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deviceId").value("edge01"))
@@ -94,6 +102,9 @@ class TelemetryControllerIntegrationTest {
     @Test
     void shouldReturnTelemetryRecordsByDeviceId() throws Exception {
         mockMvc.perform(get("/api/telemetry/device/edge01")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -101,52 +112,79 @@ class TelemetryControllerIntegrationTest {
                 .andExpect(jsonPath("$[0].temperatureC").value(30.2))
                 .andExpect(jsonPath("$[0].rpm").value(1600));
     }
-@Test
-void shouldReturnPagedTelemetryRecords() throws Exception {
-    mockMvc.perform(get("/api/telemetry/paged")
-                    .param("page", "0")
-                    .param("size", "10")
-                    .accept(MediaType.APPLICATION_JSON))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content", hasSize(1)))
-            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
-            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
-            .andExpect(jsonPath("$.content[0].rpm").value(1600))
-            .andExpect(jsonPath("$.number").value(0))
-            .andExpect(jsonPath("$.size").value(10))
-            .andExpect(jsonPath("$.totalElements").value(1));
-}
 
-@Test
-void shouldReturnPagedTelemetryRecordsByDeviceId() throws Exception {
-    mockMvc.perform(get("/api/telemetry/device/edge01/paged")
-                    .param("page", "0")
-                    .param("size", "10")
-                    .accept(MediaType.APPLICATION_JSON))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content", hasSize(1)))
-            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
-            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
-            .andExpect(jsonPath("$.content[0].rpm").value(1600))
-            .andExpect(jsonPath("$.number").value(0))
-            .andExpect(jsonPath("$.size").value(10))
-            .andExpect(jsonPath("$.totalElements").value(1));
-}
-@Test
-void shouldReturnTelemetryRecordsByDeviceIdAndTimeRange() throws Exception {
-    mockMvc.perform(get("/api/telemetry/device/edge01/range")
-                    .param("from", "2000-01-01T00:00:00Z")
-                    .param("to", "2100-01-01T00:00:00Z")
-                    .param("page", "0")
-                    .param("size", "10")
-                    .accept(MediaType.APPLICATION_JSON))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content", hasSize(1)))
-            .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
-            .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
-            .andExpect(jsonPath("$.content[0].rpm").value(1600))
-            .andExpect(jsonPath("$.number").value(0))
-            .andExpect(jsonPath("$.size").value(10))
-            .andExpect(jsonPath("$.totalElements").value(1));
-}
+    @Test
+    void shouldReturnPagedTelemetryRecords() throws Exception {
+        mockMvc.perform(get("/api/telemetry/paged")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
+                        .param("page", "0")
+                        .param("size", "10")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+                .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+                .andExpect(jsonPath("$.content[0].rpm").value(1600))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void shouldReturnPagedTelemetryRecordsByDeviceId() throws Exception {
+        mockMvc.perform(get("/api/telemetry/device/edge01/paged")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
+                        .param("page", "0")
+                        .param("size", "10")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+                .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+                .andExpect(jsonPath("$.content[0].rpm").value(1600))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void shouldReturnTelemetryRecordsByDeviceIdAndTimeRange() throws Exception {
+        mockMvc.perform(get("/api/telemetry/device/edge01/range")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
+                        .param("from", "2000-01-01T00:00:00Z")
+                        .param("to", "2100-01-01T00:00:00Z")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].deviceId").value("edge01"))
+                .andExpect(jsonPath("$.content[0].temperatureC").value(30.2))
+                .andExpect(jsonPath("$.content[0].rpm").value(1600))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+    @Test
+    void shouldRejectTelemetryRequestWithoutToken() throws Exception {
+        mockMvc.perform(
+                        get("/api/telemetry")
+                )
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldForbidTelemetryRequestWithoutViewerRole() throws Exception {
+        mockMvc.perform(
+                        get("/api/telemetry")
+                                .with(jwt())
+                )
+                .andExpect(status().isForbidden());
+    }
 }

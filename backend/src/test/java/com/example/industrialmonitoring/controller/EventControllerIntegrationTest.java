@@ -14,10 +14,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -67,6 +69,9 @@ class EventControllerIntegrationTest {
     @Test
     void shouldReturnAllEvents() throws Exception {
         mockMvc.perform(get("/api/events")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -79,6 +84,9 @@ class EventControllerIntegrationTest {
     @Test
     void shouldReturnEventsByDeviceId() throws Exception {
         mockMvc.perform(get("/api/events/device/edge01")
+                        .with(jwt().authorities(
+                                new SimpleGrantedAuthority("ROLE_VIEWER")
+                        ))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))

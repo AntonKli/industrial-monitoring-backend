@@ -11,6 +11,24 @@ services:
     volumes:
       - industrial_monitoring_postgres_data:/var/lib/postgresql/data
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    container_name: industrial-monitoring-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_VIEWER_PASSWORD: ${KEYCLOAK_VIEWER_PASSWORD}
+      KEYCLOAK_OPERATOR_PASSWORD: ${KEYCLOAK_OPERATOR_PASSWORD}
+      KEYCLOAK_AUDITOR_PASSWORD: ${KEYCLOAK_AUDITOR_PASSWORD}
+      KEYCLOAK_APP_ADMIN_PASSWORD: ${KEYCLOAK_APP_ADMIN_PASSWORD}
+    ports:
+      - "8180:8080"
+    volumes:
+      - industrial_monitoring_keycloak_data:/opt/keycloak/data
+      - ./docker/keycloak/industrial-monitoring-realm.json:/opt/keycloak/data/import/industrial-monitoring-realm.json:ro
+    mem_limit: 1g
+
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: industrial-monitoring-mosquitto
@@ -27,6 +45,7 @@ services:
     depends_on:
       - postgres
       - mosquitto
+      - keycloak
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/industrial_monitoring
       DB_USERNAME: ${DB_USERNAME}
@@ -42,6 +61,9 @@ services:
       EXPORT_CHUNK_SIZE: "${EXPORT_CHUNK_SIZE:-100}"
       EXPORT_CRON: "${EXPORT_CRON:-0 0 2 1 1 *}"
       EXPORT_ZONE: "${EXPORT_ZONE:-Europe/Berlin}"
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/industrial-monitoring
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/industrial-monitoring/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-industrial-monitoring-api}
     ports:
       - "8080:8080"
     volumes:
@@ -70,3 +92,4 @@ services:
 
 volumes:
   industrial_monitoring_postgres_data:
+  industrial_monitoring_keycloak_data:

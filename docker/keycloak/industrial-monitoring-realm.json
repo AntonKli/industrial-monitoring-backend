@@ -1,0 +1,158 @@
+{
+  "realm": "industrial-monitoring",
+  "displayName": "Industrial Monitoring",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "VIEWER",
+        "description": "May view devices, telemetry, health and event data"
+      },
+      {
+        "name": "OPERATOR",
+        "description": "May request and download monitoring exports"
+      },
+      {
+        "name": "AUDITOR",
+        "description": "May review and approve export requests and audit data"
+      },
+      {
+        "name": "ADMIN",
+        "description": "May perform administrative operations"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "industrial-monitoring-frontend",
+      "name": "Industrial Monitoring Angular Frontend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "industrial-monitoring-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "industrial-monitoring-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "industrial-monitoring-api",
+      "name": "Industrial Monitoring Spring Boot API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "monitoring-viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Viewer",
+      "email": "monitoring-viewer@example.com",
+      "realmRoles": [
+        "VIEWER"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_VIEWER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-operator",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Operator",
+      "email": "monitoring-operator@example.com",
+      "realmRoles": [
+        "VIEWER",
+        "OPERATOR"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_OPERATOR_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Auditor",
+      "email": "monitoring-auditor@example.com",
+      "realmRoles": [
+        "VIEWER",
+        "AUDITOR"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_AUDITOR_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Administrator",
+      "email": "monitoring-admin@example.com",
+      "realmRoles": [
+        "VIEWER",
+        "OPERATOR",
+        "AUDITOR",
+        "ADMIN"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_APP_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
