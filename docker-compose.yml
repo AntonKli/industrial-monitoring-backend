@@ -63,7 +63,7 @@ services:
       EXPORT_ZONE: "${EXPORT_ZONE:-Europe/Berlin}"
       KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/industrial-monitoring
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/industrial-monitoring/protocol/openid-connect/certs
-      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-industrial-monitoring-api}
     ports:
       - "8080:8080"
     volumes:
