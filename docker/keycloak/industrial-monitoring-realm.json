@@ -1,0 +1,128 @@
+{
+  "realm": "industrial-monitoring",
+  "displayName": "Industrial Monitoring",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "VIEWER",
+        "description": "May view devices, telemetry, health and event data"
+      },
+      {
+        "name": "OPERATOR",
+        "description": "May request and download monitoring exports"
+      },
+      {
+        "name": "AUDITOR",
+        "description": "May review and approve export requests and audit data"
+      },
+      {
+        "name": "ADMIN",
+        "description": "May perform administrative operations"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "industrial-monitoring-frontend",
+      "name": "Industrial Monitoring Angular Frontend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "monitoring-viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Viewer",
+      "realmRoles": [
+        "VIEWER"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_VIEWER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-operator",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Operator",
+      "realmRoles": [
+        "VIEWER",
+        "OPERATOR"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_OPERATOR_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Auditor",
+      "realmRoles": [
+        "VIEWER",
+        "AUDITOR"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_AUDITOR_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "monitoring-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Monitoring",
+      "lastName": "Administrator",
+      "realmRoles": [
+        "VIEWER",
+        "OPERATOR",
+        "AUDITOR",
+        "ADMIN"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_APP_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

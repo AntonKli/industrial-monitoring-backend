@@ -14,14 +14,19 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.0
     container_name: industrial-monitoring-keycloak
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_VIEWER_PASSWORD: ${KEYCLOAK_VIEWER_PASSWORD}
+      KEYCLOAK_OPERATOR_PASSWORD: ${KEYCLOAK_OPERATOR_PASSWORD}
+      KEYCLOAK_AUDITOR_PASSWORD: ${KEYCLOAK_AUDITOR_PASSWORD}
+      KEYCLOAK_APP_ADMIN_PASSWORD: ${KEYCLOAK_APP_ADMIN_PASSWORD}
     ports:
       - "8180:8080"
     volumes:
       - industrial_monitoring_keycloak_data:/opt/keycloak/data
+      - ./docker/keycloak/industrial-monitoring-realm.json:/opt/keycloak/data/import/industrial-monitoring-realm.json:ro
     mem_limit: 1g
 
   mosquitto:
