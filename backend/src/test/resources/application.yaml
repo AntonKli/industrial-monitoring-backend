@@ -10,6 +10,8 @@ spring:
         jwt:
           issuer-uri: http://localhost:8180/realms/industrial-monitoring
           jwk-set-uri: http://localhost:8180/realms/industrial-monitoring/protocol/openid-connect/certs
+          audiences:
+            - industrial-monitoring-api
 
   batch:
     job:
