@@ -44,7 +44,7 @@ public class ExportFileService {
         return stagingDirectory(period)
                 .resolve(
                         "telemetry-export-"
-                                + period.exportKey()
+                                + period.fileNameKey()
                                 + ".csv"
                 );
     }
@@ -53,7 +53,7 @@ public class ExportFileService {
         return stagingDirectory(period)
                 .resolve(
                         "events-export-"
-                                + period.exportKey()
+                                + period.fileNameKey()
                                 + ".csv"
                 );
     }
@@ -62,7 +62,7 @@ public class ExportFileService {
         return stagingDirectory(period)
                 .resolve(
                         "health-export-"
-                                + period.exportKey()
+                                + period.fileNameKey()
                                 + ".csv"
                 );
     }
