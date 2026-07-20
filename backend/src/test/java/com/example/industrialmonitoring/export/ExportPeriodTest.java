@@ -50,6 +50,29 @@ class ExportPeriodTest {
 
         assertFalse(period.isFullCalendarYear());
     }
+    @Test
+    void shouldCreateFileNameKeyWithInclusiveEndDate() {
+        ExportPeriod period = new ExportPeriod(
+                LocalDate.of(2026, 2, 15),
+                LocalDate.of(2026, 5, 1),
+                BERLIN
+        );
+
+        assertEquals(
+                LocalDate.of(2026, 4, 30),
+                period.toDateInclusive()
+        );
+
+        assertEquals(
+                "2026-02-15_to_2026-04-30",
+                period.fileNameKey()
+        );
+
+        assertEquals(
+                "2026-02-15_to_2026-05-01",
+                period.exportKey()
+        );
+    }
 
     @Test
     void shouldRespectDaylightSavingTime() {

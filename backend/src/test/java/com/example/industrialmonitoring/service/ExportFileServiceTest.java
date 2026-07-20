@@ -87,7 +87,7 @@ class ExportFileServiceTest {
         assertEquals(
                 expectedStagingDirectory.resolve(
                         "telemetry-export-"
-                                + "2026-02-15_to_2026-05-01.csv"
+                                + "2026-02-15_to_2026-04-30.csv"
                 ),
                 exportFileService.telemetryStagingFile(period)
         );

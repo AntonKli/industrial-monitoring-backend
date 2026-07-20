@@ -60,6 +60,18 @@ public record ExportPeriod(
                 .toOffsetDateTime();
     }
 
+    public LocalDate toDateInclusive() {
+        return toDateExclusive.minusDays(1);
+    }
+
+    public String fileNameKey() {
+        if (isFullCalendarYear()) {
+            return String.valueOf(fromDate.getYear());
+        }
+
+        return fromDate + "_to_" + toDateInclusive();
+    }
+
     public String exportKey() {
         if (isFullCalendarYear()) {
             return String.valueOf(fromDate.getYear());
