@@ -9,6 +9,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import {
   Device,
+  ExportEmailResponse,
   MonitoringApi,
   MonitoringEvent
 } from '../../services/monitoring-api';
@@ -35,6 +36,8 @@ export class Devices implements OnInit {
   protected readonly fromDate = signal('');
   protected readonly toDate = signal('');
   protected readonly isExporting = signal(false);
+  protected readonly recipientEmail = signal('');
+  protected readonly isSendingEmail = signal(false);
   protected readonly exportMessage = signal('');
   protected readonly exportError = signal('');
 
@@ -140,6 +143,70 @@ export class Devices implements OnInit {
           );
         }
       });
+  }
+
+  protected sendRangeExportByEmail(): void {
+    this.exportMessage.set('');
+    this.exportError.set('');
+
+    const selectedFromDate = this.fromDate();
+    const selectedToDate = this.toDate();
+    const recipientEmail = this.recipientEmail().trim();
+
+    if (!selectedFromDate || !selectedToDate) {
+      this.exportError.set(
+        'Please select a start date and an end date.'
+      );
+      return;
+    }
+
+    if (selectedFromDate > selectedToDate) {
+      this.exportError.set(
+        'The end date must be equal to or later than the start date.'
+      );
+      return;
+    }
+
+    if (!this.isValidEmail(recipientEmail)) {
+      this.exportError.set(
+        'Please enter a valid email address.'
+      );
+      return;
+    }
+
+    const toDateExclusive =
+      this.addOneDay(selectedToDate);
+
+    this.isSendingEmail.set(true);
+
+    this.monitoringApi
+      .sendRangeExportByEmail(
+        selectedFromDate,
+        toDateExclusive,
+        recipientEmail
+      )
+      .subscribe({
+        next: (response: ExportEmailResponse) => {
+          this.isSendingEmail.set(false);
+
+          this.exportMessage.set(
+            `The export was sent to ${response.recipientEmail}.`
+          );
+        },
+        error: () => {
+          this.isSendingEmail.set(false);
+
+          this.exportError.set(
+            'The export could not be sent by email.'
+          );
+        }
+      });
+  }
+
+  private isValidEmail(emailAddress: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      emailAddress
+    );
   }
 
   private addOneDay(dateValue: string): string {

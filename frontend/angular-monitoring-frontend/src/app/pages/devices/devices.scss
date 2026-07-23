@@ -179,3 +179,82 @@ tbody tr:hover {
     overflow-x: auto;
   }
 }
+
+.export-form {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(180px, 1fr))
+    minmax(240px, 1.5fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-field label {
+  font-weight: 600;
+}
+
+.form-field input {
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.form-field input:focus {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.export-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.export-actions button {
+  min-width: 190px;
+  min-height: 42px;
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.export-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-hint {
+  margin-top: 0.85rem;
+}
+
+.export-message {
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 850px) {
+  .export-form {
+    grid-template-columns: 1fr;
+  }
+
+  .export-actions {
+    grid-column: auto;
+    flex-direction: column;
+  }
+
+  .export-actions button {
+    width: 100%;
+  }
+}
