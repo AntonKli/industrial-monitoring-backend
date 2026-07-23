@@ -2,6 +2,21 @@
   application:
     name: industrial-monitoring-backend
 
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:false}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -64,6 +79,11 @@ export:
   chunk-size: ${EXPORT_CHUNK_SIZE:100}
   cron: "${EXPORT_CRON:0 0 2 1 1 *}"
   zone: ${EXPORT_ZONE:Europe/Berlin}
+
+  mail:
+    enabled: ${EXPORT_MAIL_ENABLED:false}
+    from: ${EXPORT_MAIL_FROM:no-reply@industrial-monitoring.local}
+    annual-recipient: ${EXPORT_MAIL_ANNUAL_RECIPIENT:}
 
 springdoc:
   swagger-ui:

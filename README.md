@@ -2,7 +2,7 @@
 
 A full-stack monitoring platform built with Java 21, Spring Boot 3.5.15 and Angular 21.
 
-The platform receives telemetry, event and health data from a CODESYS edge gateway through MQTT, stores the data in PostgreSQL and displays the current system state in an Angular frontend. Spring Batch creates scheduled or manually requested CSV exports.
+The platform receives telemetry, event and health data from a CODESYS edge gateway through MQTT, stores the data in PostgreSQL and displays the current system state in an Angular frontend. Spring Batch creates scheduled or manually requested CSV exports that can be downloaded as ZIP archives or delivered by email.
 
 Authentication and role-based access control are provided by Keycloak.
 
@@ -16,16 +16,16 @@ Authentication and role-based access control are provided by Keycloak.
 
 Industrial devices publish monitoring data through MQTT. The Spring Boot backend validates incoming messages, automatically registers devices and persists the records in PostgreSQL.
 
-The Angular frontend displays:
+The Angular frontend provides:
 
-* backend availability
+* backend availability and current device status
 * registered devices
-* current telemetry values
-* device-health information
+* latest telemetry and health information
 * recent events
 * date-range export downloads
+* date-range export delivery by email
 
-Prometheus and Grafana provide operational monitoring. Spring Batch processes yearly and manually selected export periods.
+Prometheus and Grafana provide operational monitoring. Spring Batch processes yearly and manually selected export periods. Completed annual exports can optionally be sent to a configured recipient through SMTP.
 
 ---
 
@@ -61,6 +61,14 @@ Spring Boot Backend <------> Keycloak
                 |
                 v
           CSV / ZIP Export
+                |
+        +-------+--------+
+        |                |
+        v                v
+   ZIP Download     SMTP Delivery
+                         |
+                  Mailpit or external
+                    SMTP provider
 ```
 
 ---
@@ -78,7 +86,12 @@ Spring Boot Backend <------> Keycloak
 * Role-based access control for monitoring and export operations
 * Scheduled yearly exports
 * Manual date-range exports as ZIP archives
+* Manual export delivery to a validated email address
+* Optional automatic email delivery for completed yearly exports
+* Reusable export preparation for download and email delivery
 * Spring Batch metadata and duplicate protection
+* Local SMTP testing with Mailpit
+* Configurable external SMTP delivery
 * OpenAPI, Actuator, Prometheus and Grafana
 * Docker Compose development environment
 * Automated backend tests and GitHub Actions
@@ -89,7 +102,7 @@ Spring Boot Backend <------> Keycloak
 
 ### Backend
 
-Java 21 · Spring Boot 3.5.15 · Spring Security · OAuth2 Resource Server · Spring Batch · Spring Data JPA · Hibernate · Flyway
+Java 21 · Spring Boot 3.5.15 · Spring Security · OAuth2 Resource Server · Spring Batch · Spring Mail · Spring Data JPA · Hibernate · Flyway
 
 ### Frontend
 
@@ -97,11 +110,11 @@ Angular 21 · TypeScript · Standalone Components · Angular Signals · Angular 
 
 ### Data and Messaging
 
-PostgreSQL 16 · MQTT · Eclipse Paho · Eclipse Mosquitto
+PostgreSQL 16 · MQTT · Eclipse Paho · Eclipse Mosquitto · SMTP
 
 ### Infrastructure and Monitoring
 
-Keycloak · Spring Boot Actuator · Prometheus · Grafana · Docker · Docker Compose · Maven · GitHub Actions
+Keycloak · Mailpit · Spring Boot Actuator · Prometheus · Grafana · Docker · Docker Compose · Maven · GitHub Actions
 
 ### Testing and Documentation
 
@@ -113,11 +126,13 @@ JUnit 5 · Mockito · MockMvc · Testcontainers · OpenAPI 3 · Swagger UI
 
 The Angular frontend redirects unauthenticated users to Keycloak. After login, the access token is attached to requests targeting `/api/**`.
 
+![Keycloak Login](docs/images/angular-login.png)
+
 Configured Keycloak components:
 
 ```text
-Realm:           industrial-monitoring
-Frontend client: industrial-monitoring-frontend
+Realm:            industrial-monitoring
+Frontend client:  industrial-monitoring-frontend
 Backend audience: industrial-monitoring-api
 ```
 
@@ -135,10 +150,10 @@ Current access rules:
 | Resource                                       | Required role |
 | ---------------------------------------------- | ------------- |
 | Devices, telemetry, health and events          | `VIEWER`      |
-| Export endpoints                               | `OPERATOR`    |
+| Export download and email endpoints            | `OPERATOR`    |
 | Health, info and Prometheus actuator endpoints | Public        |
 
-The configured application users combine these roles according to their responsibilities.
+A user with only the `VIEWER` role cannot download exports or send them by email. The backend enforces these rules independently of the Angular interface.
 
 ---
 
@@ -193,6 +208,28 @@ Export endpoints:
 POST /api/exports/yearly?year={year}
 POST /api/exports/range?from={from}&to={to}
 POST /api/exports/range/download?from={from}&to={to}
+POST /api/exports/range/email
+```
+
+Example email request:
+
+```json
+{
+  "fromDate": "2026-01-01",
+  "toDateExclusive": "2027-01-01",
+  "recipientEmail": "operator@example.com"
+}
+```
+
+Example response:
+
+```json
+{
+  "fromDate": "2026-01-01",
+  "toDateExclusive": "2027-01-01",
+  "recipientEmail": "operator@example.com",
+  "status": "SENT"
+}
 ```
 
 Swagger UI:
@@ -203,7 +240,7 @@ http://localhost:8080/swagger-ui.html
 
 ---
 
-## CSV and ZIP Exports
+## CSV, ZIP and Email Exports
 
 Spring Batch creates separate CSV files for:
 
@@ -215,13 +252,86 @@ health
 
 Exports can cover a completed calendar year or a manually selected date range. Completed files are published only after all batch steps finish successfully.
 
-The Angular frontend downloads the three CSV files as one ZIP archive.
+The same prepared export is reused by both delivery paths:
+
+```text
+Export period
+    |
+    v
+Existing completed export?
+    | yes                 | no
+    |                     v
+    |               Run Spring Batch
+    |                     |
+    +----------+----------+
+               |
+               v
+        Published CSV files
+               |
+       +-------+--------+
+       |                |
+       v                v
+  ZIP download      Email with ZIP
+```
+
+### Manual export
+
+An authorized operator can select an inclusive start and end date in the Angular frontend and choose either:
+
+* **Download ZIP Export**
+* **Send by Email**
+
+The frontend converts the inclusive end date into the exclusive boundary expected by the backend. The backend validates the email address again before delivery.
+
+![Angular Export Download and Email Delivery](docs/images/angular-export-download.png)
+
+### Scheduled yearly export
+
+The scheduler exports the previous completed calendar year. If email delivery is enabled and the batch status is `COMPLETED`, the generated ZIP archive is sent to the configured annual recipient.
+
+A failed SMTP delivery does not remove the already completed export. The failure is logged and the generated files remain available.
 
 Detailed information about the batch flow, validation, configuration, error handling and idempotency is available in:
 
 [Export Documentation](docs/export-documentation.md)
 
 > CSV exports are application-level data archives and do not replace PostgreSQL backup and recovery procedures.
+
+---
+
+## Email Delivery
+
+The application supports two SMTP modes.
+
+### Local development with Mailpit
+
+Mailpit captures messages locally and displays them in a browser. It does **not** forward messages to real internet mailboxes.
+
+```text
+SMTP:  mailpit:1025
+Web UI: http://localhost:8025
+```
+
+![Mailpit Export Email](docs/images/angular-mailpit.png)
+
+### External SMTP provider
+
+For real delivery, configure an SMTP provider through environment variables. The Java application code does not depend on a specific provider.
+
+```properties
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_USERNAME=your_smtp_login
+MAIL_PASSWORD=your_smtp_secret
+MAIL_SMTP_AUTH=true
+MAIL_SMTP_STARTTLS_ENABLE=true
+
+EXPORT_MAIL_ENABLED=true
+EXPORT_MAIL_FROM=verified-sender@example.com
+EXPORT_MAIL_ANNUAL_RECIPIENT=operator@example.com
+```
+
+The sender address must be accepted or verified by the selected SMTP provider. Secrets belong only in the local `.env` file and must never be committed.
 
 ---
 
@@ -233,17 +343,11 @@ The dashboard displays backend availability, registered-device count, current te
 
 ![Angular Monitoring Dashboard](docs/images/angular-dashboard.png)
 
-### Devices and Events
+### Devices, events and exports
 
-The devices page displays registered devices, recent events and the date-range export form.
+The devices page displays registered devices, recent events and the export form. Operators can download the selected period or send it to an email address.
 
-![Angular Devices and Events](docs/images/angular-devices.png)
-
-### ZIP Export
-
-Authorized users can download a selected period as a ZIP archive.
-
-![Angular ZIP Export Download](docs/images/angular-export-download.png)
+![Angular Devices and Export Delivery](docs/images/angular-export-download.png)
 
 The screenshots use data generated by the CODESYS and MQTT test setup.
 
@@ -288,7 +392,7 @@ industrial_health_records_saved_total
 * Node.js and npm
 * Git
 
-### 1. Configure the Environment
+### 1. Configure the environment
 
 Windows PowerShell:
 
@@ -302,9 +406,9 @@ Linux or macOS:
 cp .env.example .env
 ```
 
-The local `.env` provides credentials and environment-specific configuration.
+The local `.env` provides credentials and environment-specific configuration. Keep SMTP passwords, API keys and other secrets out of Git.
 
-### 2. Start the Backend Stack
+### 2. Start the backend stack
 
 ```bash
 docker compose up --build -d
@@ -316,13 +420,14 @@ Services:
 Backend API:  http://localhost:8080
 Swagger UI:   http://localhost:8080/swagger-ui.html
 Keycloak:     http://localhost:8180
+Mailpit:      http://localhost:8025
 Prometheus:   http://localhost:19090
 Grafana:      http://localhost:13000
 Mosquitto:    localhost:1884
 PostgreSQL:   localhost:5432
 ```
 
-### 3. Start the Angular Frontend
+### 3. Start the Angular frontend
 
 ```bash
 cd frontend/angular-monitoring-frontend
@@ -340,7 +445,7 @@ The Angular development proxy forwards `/api/**` and `/actuator/**` requests to 
 
 The frontend runs separately from the Docker Compose stack.
 
-### Stop the Stack
+### Stop the stack
 
 ```bash
 docker compose down
@@ -365,6 +470,8 @@ Linux or macOS:
 cd backend
 ./mvnw clean test
 ```
+
+The test suite covers export preparation, ZIP generation, email delivery, request validation, role-based authorization and the scheduled annual delivery flow.
 
 ### Frontend
 

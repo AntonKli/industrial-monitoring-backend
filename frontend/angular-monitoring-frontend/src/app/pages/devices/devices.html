@@ -35,9 +35,10 @@
     <div class="export-header">
       <div>
         <h2>Data Export</h2>
+
         <p>
-          Download a ZIP archive containing telemetry, health and event data
-          for the selected period.
+          Download a ZIP archive or send telemetry, health and event data
+          by email for the selected period.
         </p>
       </div>
     </div>
@@ -65,21 +66,50 @@
         />
       </div>
 
-      <button
-        type="button"
-        [disabled]="isExporting()"
-        (click)="createRangeExport()"
-      >
-        @if (isExporting()) {
-        Preparing download...
-        } @else {
-        Download ZIP Export
-        }
-      </button>
+      <div class="form-field email-field">
+        <label for="recipient-email">Recipient email</label>
+
+        <input
+          id="recipient-email"
+          type="email"
+          placeholder="example@email.com"
+          autocomplete="email"
+          [ngModel]="recipientEmail()"
+          (ngModelChange)="recipientEmail.set($event)"
+        />
+      </div>
+
+      <div class="export-actions">
+        <button
+          type="button"
+          [disabled]="isExporting() || isSendingEmail()"
+          (click)="createRangeExport()"
+        >
+          @if (isExporting()) {
+          Preparing download...
+          } @else {
+          Download ZIP Export
+          }
+        </button>
+
+        <button
+          type="button"
+          class="email-button"
+          [disabled]="isExporting() || isSendingEmail()"
+          (click)="sendRangeExportByEmail()"
+        >
+          @if (isSendingEmail()) {
+          Sending email...
+          } @else {
+          Send by Email
+          }
+        </button>
+      </div>
     </div>
 
     <p class="export-hint">
       The start date and end date are both included in the export.
+      An email address is required only for email delivery.
     </p>
 
     @if (exportMessage()) {

@@ -1,6 +1,8 @@
 package com.example.industrialmonitoring.controller;
 
-import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.export.ExportPeriod;
+import com.example.industrialmonitoring.service.ExportMailService;
+import com.example.industrialmonitoring.service.ExportPreparationService;
 import com.example.industrialmonitoring.service.ExportFileService;
 import com.example.industrialmonitoring.exception.AnnualExportConflictException;
 import com.example.industrialmonitoring.exception.GlobalExceptionHandler;
@@ -14,8 +16,14 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobInstance;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -23,30 +31,51 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class ExportControllerTest {
 
     private ExportJobService exportJobService;
     private ExportFileService exportFileService;
-    private ExportProperties exportProperties;
+    private ExportPreparationService exportPreparationService;
     private MockMvc mockMvc;
+    private ExportMailService exportMailService;
+
 
 
     @BeforeEach
     void setUp() {
         exportJobService = mock(ExportJobService.class);
         exportFileService = mock(ExportFileService.class);
-        exportProperties = mock(ExportProperties.class);
+        exportPreparationService = mock(ExportPreparationService.class);
+        exportMailService = mock(ExportMailService.class);
 
         ExportController exportController =
                 new ExportController(
                         exportJobService,
                         exportFileService,
-                        exportProperties
+                        exportPreparationService,
+                        exportMailService
                 );
+
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        objectMapper.registerModule(
+                new JavaTimeModule()
+        );
+
+        objectMapper.disable(
+                SerializationFeature.WRITE_DATES_AS_TIMESTAMPS
+        );
 
         mockMvc = MockMvcBuilders
                 .standaloneSetup(exportController)
+                .setMessageConverters(
+                        new MappingJackson2HttpMessageConverter(
+                                objectMapper
+                        )
+                )
                 .setControllerAdvice(
                         new GlobalExceptionHandler()
                 )
@@ -117,6 +146,106 @@ class ExportControllerTest {
                         jsonPath("$.status")
                                 .value("COMPLETED")
                 );
+    }
+
+    @Test
+    void shouldSendRangeExportByEmail()
+            throws Exception {
+
+        LocalDate fromDate =
+                LocalDate.of(2025, 1, 1);
+
+        LocalDate toDateExclusive =
+                LocalDate.of(2026, 1, 1);
+
+        ExportPeriod period =
+                new ExportPeriod(
+                        fromDate,
+                        toDateExclusive,
+                        ZoneId.of("Europe/Berlin")
+                );
+
+        when(
+                exportPreparationService.prepareRangeExport(
+                        fromDate,
+                        toDateExclusive
+                )
+        ).thenReturn(period);
+
+        String requestBody =
+                "{"
+                        + "\"fromDate\":\"2025-01-01\","
+                        + "\"toDateExclusive\":\"2026-01-01\","
+                        + "\"recipientEmail\":\"operator@example.com\""
+                        + "}";
+
+        mockMvc.perform(
+                        post("/api/exports/range/email")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(requestBody)
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        content().contentTypeCompatibleWith(
+                                MediaType.APPLICATION_JSON
+                        )
+                )
+                .andExpect(
+                        jsonPath("$.fromDate")
+                                .value("2025-01-01")
+                )
+                .andExpect(
+                        jsonPath("$.toDateExclusive")
+                                .value("2026-01-01")
+                )
+                .andExpect(
+                        jsonPath("$.recipientEmail")
+                                .value("operator@example.com")
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("SENT")
+                );
+
+        verify(exportPreparationService)
+                .prepareRangeExport(
+                        fromDate,
+                        toDateExclusive
+                );
+
+        verify(exportMailService)
+                .sendExport(
+                        period,
+                        "operator@example.com"
+                );
+    }
+
+    @Test
+    void shouldRejectInvalidRecipientEmail()
+            throws Exception {
+
+        String requestBody =
+                "{"
+                        + "\"fromDate\":\"2025-01-01\","
+                        + "\"toDateExclusive\":\"2026-01-01\","
+                        + "\"recipientEmail\":\"invalid-email\""
+                        + "}";
+
+        mockMvc.perform(
+                        post("/api/exports/range/email")
+                                .contentType(
+                                        MediaType.APPLICATION_JSON
+                                )
+                                .content(requestBody)
+                )
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(
+                exportPreparationService,
+                exportMailService
+        );
     }
 
     @Test

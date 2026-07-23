@@ -1,25 +1,28 @@
 package com.example.industrialmonitoring.controller;
 
-import com.example.industrialmonitoring.config.ExportProperties;
+import com.example.industrialmonitoring.service.ExportPreparationService;
+
+import com.example.industrialmonitoring.dto.ExportEmailRequest;
+import com.example.industrialmonitoring.dto.ExportEmailResponse;
+import com.example.industrialmonitoring.service.ExportMailService;
+import jakarta.validation.Valid;
 import com.example.industrialmonitoring.dto.ExportJobResponse;
 import com.example.industrialmonitoring.dto.ExportPeriodJobResponse;
 import com.example.industrialmonitoring.export.ExportPeriod;
 import com.example.industrialmonitoring.service.ExportFileService;
 import com.example.industrialmonitoring.service.ExportJobService;
-import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 
 @RestController
@@ -28,16 +31,19 @@ public class ExportController {
 
     private final ExportJobService exportJobService;
     private final ExportFileService exportFileService;
-    private final ExportProperties exportProperties;
+    private final ExportPreparationService exportPreparationService;
+    private final ExportMailService exportMailService;
 
     public ExportController(
             ExportJobService exportJobService,
             ExportFileService exportFileService,
-            ExportProperties exportProperties
+            ExportPreparationService exportPreparationService,
+            ExportMailService exportMailService
     ) {
         this.exportJobService = exportJobService;
         this.exportFileService = exportFileService;
-        this.exportProperties = exportProperties;
+        this.exportPreparationService = exportPreparationService;
+        this.exportMailService = exportMailService;
     }
 
     @PostMapping("/yearly")
@@ -93,45 +99,10 @@ public class ExportController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate toDateExclusive
     ) {
-        ExportPeriod period = new ExportPeriod(
+        ExportPeriod period = exportPreparationService.prepareRangeExport(
                 fromDate,
-                toDateExclusive,
-                exportProperties.zoneId()
+                toDateExclusive
         );
-
-        Path finalDirectory =
-                exportFileService.finalDirectory(period);
-
-        /*
-         * Reuse an existing completed export. This allows the
-         * same period to be downloaded repeatedly without
-         * starting the same Spring Batch job again.
-         */
-        if (!Files.isDirectory(finalDirectory)) {
-            JobExecution jobExecution =
-                    exportJobService.startRangeExport(
-                            fromDate,
-                            toDateExclusive
-                    );
-
-            if (
-                    jobExecution.getStatus()
-                            != BatchStatus.COMPLETED
-            ) {
-                throw new IllegalStateException(
-                        "Export job did not complete successfully. "
-                                + "Current status: "
-                                + jobExecution.getStatus()
-                );
-            }
-        }
-
-        if (!Files.isDirectory(finalDirectory)) {
-            throw new IllegalStateException(
-                    "Completed export directory does not exist: "
-                            + finalDirectory
-            );
-        }
 
         LocalDate inclusiveToDate =
                 toDateExclusive.minusDays(1);
@@ -163,5 +134,32 @@ public class ExportController {
                         )
                 )
                 .body(responseBody);
+    }
+    @PostMapping("/range/email")
+    public ResponseEntity<ExportEmailResponse> sendRangeExportByEmail(
+            @Valid
+            @RequestBody
+            ExportEmailRequest request
+    ) {
+        ExportPeriod period =
+                exportPreparationService.prepareRangeExport(
+                        request.fromDate(),
+                        request.toDateExclusive()
+                );
+
+        exportMailService.sendExport(
+                period,
+                request.recipientEmail()
+        );
+
+        ExportEmailResponse response =
+                new ExportEmailResponse(
+                        request.fromDate(),
+                        request.toDateExclusive(),
+                        request.recipientEmail(),
+                        "SENT"
+                );
+
+        return ResponseEntity.ok(response);
     }
 }

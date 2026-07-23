@@ -2,6 +2,13 @@ import { HttpClient, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface ExportEmailResponse {
+  fromDate: string;
+  toDateExclusive: string;
+  recipientEmail: string;
+  status: string;
+}
+
 export interface BackendHealth {
   status: string;
 }
@@ -109,6 +116,20 @@ export class MonitoringApi {
           },
           observe: 'response',
           responseType: 'blob'
+        }
+      );
+    }
+    sendRangeExportByEmail(
+      fromDate: string,
+      toDateExclusive: string,
+      recipientEmail: string
+    ): Observable<ExportEmailResponse> {
+      return this.http.post<ExportEmailResponse>(
+        '/api/exports/range/email',
+        {
+          fromDate,
+          toDateExclusive,
+          recipientEmail
         }
       );
     }
