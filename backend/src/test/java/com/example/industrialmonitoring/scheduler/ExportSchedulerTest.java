@@ -1,5 +1,9 @@
 package com.example.industrialmonitoring.scheduler;
 
+import org.springframework.batch.core.BatchStatus;
+import com.example.industrialmonitoring.export.ExportPeriod;
+import com.example.industrialmonitoring.config.ExportMailProperties;
+import com.example.industrialmonitoring.service.ExportMailService;
 import com.example.industrialmonitoring.config.ExportProperties;
 import com.example.industrialmonitoring.service.ExportJobService;
 import org.junit.jupiter.api.Test;
@@ -11,6 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+
 
 class ExportSchedulerTest {
 
@@ -21,6 +28,12 @@ class ExportSchedulerTest {
 
         ExportProperties exportProperties =
                 createExportProperties();
+
+        ExportMailService exportMailService =
+                mock(ExportMailService.class);
+
+        ExportMailProperties exportMailProperties =
+                mock(ExportMailProperties.class);
 
         int expectedYear = Year.now(
                         exportProperties.zoneId()
@@ -38,7 +51,9 @@ class ExportSchedulerTest {
         ExportScheduler exportScheduler =
                 new ExportScheduler(
                         exportJobService,
-                        exportProperties
+                        exportProperties,
+                        exportMailService,
+                        exportMailProperties
                 );
 
         exportScheduler.exportPreviousYear();
@@ -48,12 +63,83 @@ class ExportSchedulerTest {
     }
 
     @Test
+    void shouldSendCompletedAnnualExportByEmail() {
+        ExportJobService exportJobService =
+                mock(ExportJobService.class);
+
+        ExportProperties exportProperties =
+                createExportProperties();
+
+        ExportMailService exportMailService =
+                mock(ExportMailService.class);
+
+        ExportMailProperties exportMailProperties =
+                mock(ExportMailProperties.class);
+
+        int expectedYear = Year.now(
+                        exportProperties.zoneId()
+                )
+                .minusYears(1)
+                .getValue();
+
+        JobExecution jobExecution =
+                mock(JobExecution.class);
+
+        when(
+                exportJobService.startAnnualExport(expectedYear)
+        ).thenReturn(jobExecution);
+
+        when(jobExecution.getStatus())
+                .thenReturn(BatchStatus.COMPLETED);
+
+        when(exportMailProperties.enabled())
+                .thenReturn(true);
+
+        when(exportMailProperties.annualRecipient())
+                .thenReturn("operator@example.com");
+
+        ExportScheduler exportScheduler =
+                new ExportScheduler(
+                        exportJobService,
+                        exportProperties,
+                        exportMailService,
+                        exportMailProperties
+                );
+
+        exportScheduler.exportPreviousYear();
+
+        verify(exportMailService).sendExport(
+                argThat(period ->
+                        period.fromDate().getYear()
+                                == expectedYear
+                                && period.fromDate().getMonthValue()
+                                == 1
+                                && period.fromDate().getDayOfMonth()
+                                == 1
+                                && period.toDateExclusive().getYear()
+                                == expectedYear + 1
+                                && period.toDateExclusive().getMonthValue()
+                                == 1
+                                && period.toDateExclusive().getDayOfMonth()
+                                == 1
+                ),
+                eq("operator@example.com")
+        );
+    }
+
+    @Test
     void shouldHandleJobStartFailureWithoutCrashingScheduler() {
         ExportJobService exportJobService =
                 mock(ExportJobService.class);
 
         ExportProperties exportProperties =
                 createExportProperties();
+
+        ExportMailService exportMailService =
+                mock(ExportMailService.class);
+
+        ExportMailProperties exportMailProperties =
+                mock(ExportMailProperties.class);
 
         int expectedYear = Year.now(
                         exportProperties.zoneId()
@@ -72,7 +158,9 @@ class ExportSchedulerTest {
         ExportScheduler exportScheduler =
                 new ExportScheduler(
                         exportJobService,
-                        exportProperties
+                        exportProperties,
+                        exportMailService,
+                        exportMailProperties
                 );
 
         assertDoesNotThrow(

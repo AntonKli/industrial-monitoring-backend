@@ -1,4 +1,16 @@
 spring:
+  mail:
+    host: localhost
+    port: 1025
+    username:
+    password:
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
   datasource:
     url: jdbc:postgresql://localhost:5432/industrial_monitoring
     username: industrial_user
