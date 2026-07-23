@@ -73,12 +73,12 @@ services:
       KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/industrial-monitoring
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/industrial-monitoring/protocol/openid-connect/certs
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-industrial-monitoring-api}
-      MAIL_HOST: mailpit
-      MAIL_PORT: "1025"
-      MAIL_USERNAME: ""
-      MAIL_PASSWORD: ""
-      MAIL_SMTP_AUTH: "false"
-      MAIL_SMTP_STARTTLS_ENABLE: "false"
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: "${MAIL_PORT:-1025}"
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: "${MAIL_SMTP_AUTH:-false}"
+      MAIL_SMTP_STARTTLS_ENABLE: "${MAIL_SMTP_STARTTLS_ENABLE:-false}"
       EXPORT_MAIL_ENABLED: ${EXPORT_MAIL_ENABLED:-false}
       EXPORT_MAIL_FROM: ${EXPORT_MAIL_FROM:-no-reply@industrial-monitoring.local}
       EXPORT_MAIL_ANNUAL_RECIPIENT: ${EXPORT_MAIL_ANNUAL_RECIPIENT:-}
