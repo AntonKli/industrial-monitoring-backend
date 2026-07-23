@@ -1,155 +1,261 @@
 # Export Documentation
 
-This document describes the Spring Batch export workflow, date handling, API behavior, validation, error responses and configuration used by the Industrial Monitoring Platform.
+This document describes the CSV, ZIP and email export workflow of the Industrial Monitoring Platform.
 
-[Back to the main README](../README.md)
+The export feature creates application-level archives of persisted telemetry, event and health records. Exports can cover a completed calendar year or a manually selected date range. Completed data can be downloaded as a ZIP archive or delivered as an email attachment.
+
+> The exported CSV files are application-level data archives. They do not replace PostgreSQL backup, restore or disaster-recovery procedures.
 
 ---
 
-## Overview
+## Feature Overview
 
-The backend creates CSV exports for stored telemetry, event and health records.
+The platform supports four export entry points:
 
-Two export modes are available:
+| Entry point | Trigger | Result |
+| --- | --- | --- |
+| Scheduled yearly export | Spring scheduler | CSV export for the previous completed calendar year |
+| Manual yearly export | REST API | CSV export for a completed calendar year |
+| Manual range download | Angular frontend or REST API | ZIP archive containing three CSV files |
+| Manual range email | Angular frontend or REST API | Email containing the ZIP archive as an attachment |
 
-* Scheduled or manually triggered exports of completed calendar years
-* Manually triggered exports for selected date ranges
+The scheduled yearly flow can additionally send the completed archive to a configured recipient when export email delivery is enabled.
 
-Both modes use the same Spring Batch job, readers, writers, staging workflow and publication process.
+```text
+Selected export period
+        |
+        v
+Existing completed export?
+   | yes                | no
+   |                    v
+   |              Start Spring Batch
+   |                    |
+   |              Require COMPLETED
+   |                    |
+   +---------+----------+
+             |
+             v
+      Published CSV files
+             |
+      +------+-------+
+      |              |
+      v              v
+ ZIP download    Email attachment
+```
 
-For browser downloads, the backend streams the three completed CSV files as a ZIP archive. If a completed export already exists for the selected period, the download endpoint reuses it instead of starting the batch job again.
+---
 
-> These exports do not replace PostgreSQL backup and recovery procedures.
+## Main Components
+
+### `ExportPeriod`
+
+`ExportPeriod` represents the selected time range and contains:
+
+```text
+fromDate
+
+toDateExclusive
+
+zoneId
+```
+
+It provides the timestamp boundaries used by the database readers as well as separate keys for storage directories and user-facing filenames.
+
+### `ExportJobService`
+
+Starts the Spring Batch job for yearly and flexible date-range exports. It validates the requested year or range and translates duplicate or non-restartable executions into an export conflict.
+
+### `ExportFileService`
+
+Manages:
+
+* staging directories
+* final export directories
+* telemetry, event and health CSV paths
+* publication of completed exports
+* ZIP creation from published CSV files
+
+### `ExportPreparationService`
+
+Provides the shared preparation flow used by download and email delivery:
+
+1. Create the `ExportPeriod`.
+2. Check whether the final export directory already exists.
+3. Reuse the completed export when available.
+4. Otherwise start the range export.
+5. Require `BatchStatus.COMPLETED`.
+6. Verify that the final directory was published.
+7. Return the prepared period.
+
+This avoids duplicating batch-start and publication checks in the controller.
+
+### `ExportMailService`
+
+Creates an email for an already prepared export:
+
+1. Validate that email delivery is enabled.
+2. Validate that the recipient is present.
+3. Create a temporary ZIP file.
+4. Stream the published CSV files into the ZIP.
+5. Create a MIME message.
+6. Attach the ZIP file.
+7. Send the message through `JavaMailSender`.
+8. Delete the temporary ZIP in a `finally` block.
+
+The service does not start a batch job. Export preparation remains the responsibility of `ExportPreparationService` or the scheduler.
+
+### `ExportScheduler`
+
+Calculates the previous calendar year in the configured export time zone, starts the yearly batch job and optionally sends the completed export to `EXPORT_MAIL_ANNUAL_RECIPIENT`.
+
+Email delivery is attempted only when:
+
+* the batch execution status is `COMPLETED`
+* `EXPORT_MAIL_ENABLED` is `true`
+* an annual recipient is configured
+
+An SMTP failure does not remove or invalidate the completed export.
+
+### `ExportController`
+
+Exposes the yearly, range, ZIP-download and email-delivery endpoints under:
+
+```text
+/api/exports/**
+```
+
+### Angular export form
+
+The Devices page lets an authorized operator:
+
+* choose an inclusive start date
+* choose an inclusive end date
+* download the export as ZIP
+* enter a recipient address and send the export by email
+
+![Angular Export Download and Email Delivery](images/angular-export-download.png)
 
 ---
 
 ## Authentication and Authorization
 
-All export endpoints require a valid Keycloak access token.
+All export endpoints require a valid Keycloak access token and the `OPERATOR` realm role.
 
 ```text
-Required realm role: OPERATOR
+/api/exports/** -> ROLE_OPERATOR
 ```
 
-The configured `monitoring-operator` and `monitoring-admin` users have this role.
+Expected behavior:
 
-A user who is not authenticated receives:
+| Request | Result |
+| --- | --- |
+| No bearer token | `401 Unauthorized` |
+| Valid token with only `VIEWER` | `403 Forbidden` |
+| Valid token with `OPERATOR` | Export action allowed |
 
-```text
-401 Unauthorized
-```
+A user with only the `VIEWER` role can read monitoring data but cannot download archives or send them to an email address.
 
-An authenticated user without the `OPERATOR` role receives:
-
-```text
-403 Forbidden
-```
-
-For example, `monitoring-viewer` can access monitoring data but cannot start or download exports.
+The Angular interface improves usability by presenting export controls only to suitable users, but the backend authorization rule is the security boundary.
 
 ---
 
-## Export API
+## Date Model
+
+### Half-open backend interval
+
+The backend uses a half-open interval:
 
 ```text
-POST /api/exports/yearly?year={year}
-POST /api/exports/range?from={from}&to={to}
-POST /api/exports/range/download?from={from}&to={to}
+createdAt >= fromDate at start of day
+createdAt <  toDateExclusive at start of day
 ```
-
-The `to` parameter is always interpreted as an exclusive end date.
-
----
-
-## Date Semantics
-
-The backend uses half-open date ranges:
-
-```text
-createdAt >= from
-createdAt <  to
-```
-
-The `from` date is inclusive and the `to` date is exclusive.
 
 Example:
 
 ```text
-from: 2025-10-01
-to:   2026-04-01
+fromDate:        2026-07-22
+
+toDateExclusive: 2026-07-24
 ```
 
-This includes all records from October 1, 2025 through March 31, 2026. Records from April 1, 2026 are not included.
+The selected records cover both July 22 and July 23. July 24 is not included.
 
-Using an exclusive end date avoids end-of-day values such as:
+Using an exclusive upper boundary avoids artificial values such as `23:59:59.999999` and works cleanly with database range queries.
+
+### Inclusive Angular end date
+
+The Angular form presents both selected dates as inclusive. Before calling the backend, it adds one calendar day to the selected end date.
 
 ```text
-23:59:59.999999
+UI selection: 2026-07-22 through 2026-07-23
+API period:   2026-07-22 through 2026-07-24 exclusive
 ```
 
-### Angular Date Handling
+### Validation rules
 
-The Angular frontend presents both selected dates as inclusive.
+Valid date ranges must meet these conditions:
 
-Before sending the request, it adds one calendar day to the selected end date.
+* `fromDate` must not be null
+* `toDateExclusive` must not be null
+* `fromDate` must be before `toDateExclusive`
+* the start must not be earlier than the supported minimum year
+* the range must not extend beyond the permitted current-day boundary
 
-Example user selection:
-
-```text
-From: 2026-07-16
-To:   2026-07-16
-```
-
-Backend request:
-
-```text
-from=2026-07-16
-to=2026-07-17
-```
-
-This includes the complete day of July 16, 2026.
+The yearly endpoint is intended for completed calendar years. Current-year data can be exported through the flexible range endpoints.
 
 ---
 
-## Scheduled Annual Export
+## Export Keys and Filenames
 
-The default scheduler runs every January 1 at 02:00 in the `Europe/Berlin` time zone and exports the previous completed calendar year.
+The implementation distinguishes between an internal directory key and a user-facing filename key.
 
-Example:
+### Full calendar year
 
-```text
-Scheduler execution: January 1, 2027 at 02:00
-Export range:        2026-01-01 until 2027-01-01
-```
-
-The selected records satisfy:
+A complete year uses the compact year key everywhere:
 
 ```text
-createdAt >= 2026-01-01T00:00:00
-createdAt <  2027-01-01T00:00:00
+Period:        2025-01-01 through 2026-01-01 exclusive
+Directory:     exports/2025/
+CSV files:     telemetry-export-2025.csv
+               events-export-2025.csv
+               health-export-2025.csv
+ZIP file:      monitoring-export-2025.zip
 ```
 
-Only completed calendar years can be started through the yearly endpoint.
+### Flexible range
 
-Current-year data can be exported through the range endpoint.
+For a flexible range, internal directories use the exclusive boundary while CSV and ZIP filenames use the inclusive end date.
+
+```text
+UI period:          2025-10-01 through 2026-03-31 inclusive
+Backend period:     2025-10-01 through 2026-04-01 exclusive
+Directory key:      2025-10-01_to_2026-04-01
+Filename key:       2025-10-01_to_2026-03-31
+```
+
+Result:
+
+```text
+exports/
+└── 2025-10-01_to_2026-04-01/
+    ├── telemetry-export-2025-10-01_to_2026-03-31.csv
+    ├── events-export-2025-10-01_to_2026-03-31.csv
+    └── health-export-2025-10-01_to_2026-03-31.csv
+```
+
+The downloaded or emailed archive is named:
+
+```text
+monitoring-export-2025-10-01_to_2026-03-31.zip
+```
+
+This separation preserves unambiguous backend interval semantics while presenting the period in the inclusive form expected by users.
 
 ---
 
-## Flexible Range Export
+## Spring Batch Flow
 
-A manual range export can use any valid date range, including ranges that cross calendar-year boundaries.
-
-Valid ranges must meet these conditions:
-
-* `from` must be before `to`
-* `from` must not be earlier than `2000-01-01`
-* `to` must not be later than the next calendar day in the configured export time zone
-
-Allowing the following day as the exclusive end date makes it possible to export the complete current day.
-
----
-
-## Batch Job Flow
+The export job uses the same processing flow for yearly and flexible ranges.
 
 ```text
 prepareAnnualExportStep
@@ -167,148 +273,120 @@ healthExportStep
 finalizeAnnualExportStep
 ```
 
-The step names originate from the initial annual-export implementation. The same steps are also used for flexible date ranges.
-
 ### `prepareAnnualExportStep`
 
 Creates the staging directory for the selected export period.
 
 ### `telemetryExportStep`
 
-Reads telemetry records from PostgreSQL in configurable chunks and writes them to CSV.
+Reads telemetry records from PostgreSQL in configurable chunks and writes them to a CSV file.
 
 ### `eventExportStep`
 
-Reads event records from PostgreSQL in configurable chunks and writes them to CSV.
+Reads event records from PostgreSQL in configurable chunks and writes them to a CSV file.
 
 ### `healthExportStep`
 
-Reads health records from PostgreSQL in configurable chunks and writes them to CSV.
+Reads health records from PostgreSQL in configurable chunks and writes them to a CSV file.
 
 ### `finalizeAnnualExportStep`
 
-Publishes the export only after every previous step has completed successfully.
+Publishes the staging directory only after every previous step has completed successfully.
 
 ---
 
 ## Staging and Publication
 
-Files are first written to a staging directory:
+Files are written to `.staging` first.
 
 ```text
 exports/
 └── .staging/
     └── 2025-10-01_to_2026-04-01/
-        ├── telemetry-export-2025-10-01_to_2026-04-01.csv
-        ├── events-export-2025-10-01_to_2026-04-01.csv
-        └── health-export-2025-10-01_to_2026-04-01.csv
+        ├── telemetry-export-2025-10-01_to_2026-03-31.csv
+        ├── events-export-2025-10-01_to_2026-03-31.csv
+        └── health-export-2025-10-01_to_2026-03-31.csv
 ```
 
-After all batch steps complete successfully, the directory is published:
+After all processing steps succeed, the staging directory is moved to its final location:
 
 ```text
 exports/
 └── 2025-10-01_to_2026-04-01/
-    ├── telemetry-export-2025-10-01_to_2026-04-01.csv
-    ├── events-export-2025-10-01_to_2026-04-01.csv
-    └── health-export-2025-10-01_to_2026-04-01.csv
+    ├── telemetry-export-2025-10-01_to_2026-03-31.csv
+    ├── events-export-2025-10-01_to_2026-03-31.csv
+    └── health-export-2025-10-01_to_2026-03-31.csv
 ```
 
-A complete calendar-year export uses the shorter year-based name:
+Consequences:
 
-```text
-exports/
-└── 2025/
-    ├── telemetry-export-2025.csv
-    ├── events-export-2025.csv
-    └── health-export-2025.csv
-```
+* incomplete exports are not exposed as completed archives
+* download and email delivery read only from final directories
+* an already published export can be reused without another batch execution
+* SMTP failures do not damage the CSV export
 
-An export is not moved out of the staging directory until all three CSV steps have completed successfully.
-
-The generated `exports` directory is excluded from Git.
+The generated `exports/` directory is excluded from Git.
 
 ---
 
-## Chunk Processing
+## Chunk-Based Processing
 
-Records are read and written in configurable chunks instead of loading an entire export period into memory.
+Records are read and written in configurable chunks instead of loading the complete period into memory.
 
-The chunk size is configured through:
-
-```text
-EXPORT_CHUNK_SIZE
+```properties
+EXPORT_CHUNK_SIZE=100
 ```
 
-Each chunk is processed within a Spring Batch transaction.
+The chunk size defines the number of records processed per transaction. It can be adjusted according to data volume, database performance and available memory.
 
 ---
 
 ## Spring Batch Metadata and Idempotency
 
-Spring Batch stores job, execution and step metadata in PostgreSQL.
+Spring Batch stores job, execution and step metadata in PostgreSQL. Flyway migration `V2` creates the required metadata tables and sequences.
 
-The identifying job parameters are:
+The export period forms the logical identity of a range execution. The identifying values are based on:
 
 ```text
 fromDate
+
 toDateExclusive
+
 zoneId
 ```
 
-Starting the same period again therefore refers to the same Spring Batch job instance.
+Starting an already running, completed or non-restartable job instance is translated into an export conflict where applicable.
 
-The ZIP download endpoint first checks whether the final export directory already exists. If it does, the existing CSV files are reused.
+The download and email endpoints also check the final export directory first. A previously published period is reused directly instead of starting a duplicate export.
 
-A partial current-year export does not block a later complete yearly export because the periods use different identifying parameters.
+A partial current-year range does not block a later complete yearly export because the periods differ.
 
 ---
 
-## Access Token in Command-Line Examples
+## REST Endpoints
 
-The following examples assume that a valid Keycloak access token has already been obtained.
+All examples assume a valid `OPERATOR` access token.
+
+```text
+Authorization: Bearer <access-token>
+```
+
+### Start a completed yearly export
+
+```http
+POST /api/exports/yearly?year=2025
+```
 
 PowerShell:
 
 ```powershell
-$token = "ACCESS_TOKEN"
-```
-
-Linux or macOS:
-
-```bash
-export TOKEN="ACCESS_TOKEN"
-```
-
-The Angular application obtains its access token through Authorization Code Flow with PKCE. Direct username-and-password token requests are not enabled for the frontend client.
-
----
-
-## Manual Yearly Export
-
-Only completed calendar years are accepted.
-
-### PowerShell
-
-```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Headers @{
-    Authorization = "Bearer $token"
-  } `
-  -Uri "http://localhost:8080/api/exports/yearly?year=2025" |
-  ConvertTo-Json
+  -Headers @{ Authorization = "Bearer $accessToken" } `
+  -Uri "http://localhost:8080/api/exports/yearly?year=2025"
 ```
 
-### curl
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8080/api/exports/yearly?year=2025"
-```
-
-### Successful Response
+Example response:
 
 ```json
 {
@@ -319,31 +397,24 @@ curl -X POST \
 }
 ```
 
----
+### Start a flexible range export
 
-## Manual Range Export
+The `to` query parameter is exclusive.
 
-### PowerShell
+```http
+POST /api/exports/range?from=2025-10-01&to=2026-04-01
+```
+
+PowerShell:
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Headers @{
-    Authorization = "Bearer $token"
-  } `
-  -Uri "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01" |
-  ConvertTo-Json
+  -Headers @{ Authorization = "Bearer $accessToken" } `
+  -Uri "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01"
 ```
 
-### curl
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8080/api/exports/range?from=2025-10-01&to=2026-04-01"
-```
-
-### Successful Response
+Example response:
 
 ```json
 {
@@ -355,133 +426,183 @@ curl -X POST \
 }
 ```
 
----
+### Download a range as ZIP
 
-## ZIP Download
+```http
+POST /api/exports/range/download?from=2025-10-01&to=2026-04-01
+```
 
-The ZIP endpoint either reuses an existing completed export or starts the batch job before streaming the archive.
-
-### PowerShell
+PowerShell:
 
 ```powershell
-curl.exe -X POST `
-  -H "Authorization: Bearer $token" `
-  "http://localhost:8080/api/exports/range/download?from=2026-07-16&to=2026-07-17" `
-  -o "monitoring-export-2026-07-16_to_2026-07-16.zip"
+Invoke-WebRequest `
+  -Method Post `
+  -Headers @{ Authorization = "Bearer $accessToken" } `
+  -Uri "http://localhost:8080/api/exports/range/download?from=2025-10-01&to=2026-04-01" `
+  -OutFile "monitoring-export.zip"
 ```
 
-### curl
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8080/api/exports/range/download?from=2026-07-16&to=2026-07-17" \
-  --output "monitoring-export-2026-07-16_to_2026-07-16.zip"
-```
-
-Example archive content:
+Successful response:
 
 ```text
-events-export-2026-07-16_to_2026-07-17.csv
-health-export-2026-07-16_to_2026-07-17.csv
-telemetry-export-2026-07-16_to_2026-07-17.csv
+Status:              200 OK
+Content-Type:        application/zip
+Content-Disposition: attachment; filename="monitoring-export-2025-10-01_to_2026-03-31.zip"
 ```
 
-The downloaded ZIP name uses the inclusive period shown to the user:
+The endpoint prepares or reuses the export and streams the three final CSV files into one ZIP archive.
 
-```text
-monitoring-export-2026-07-16_to_2026-07-16.zip
+### Send a range by email
+
+```http
+POST /api/exports/range/email
+Content-Type: application/json
 ```
 
-The CSV filenames currently use the backend's exclusive end date:
+Request:
 
-```text
-2026-07-16_to_2026-07-17
+```json
+{
+  "fromDate": "2025-10-01",
+  "toDateExclusive": "2026-04-01",
+  "recipientEmail": "operator@example.com"
+}
 ```
 
-This difference affects the displayed filenames only. The exported data uses the same half-open period in both cases.
+PowerShell:
+
+```powershell
+$body = @{
+  fromDate = "2025-10-01"
+  toDateExclusive = "2026-04-01"
+  recipientEmail = "operator@example.com"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Headers @{ Authorization = "Bearer $accessToken" } `
+  -ContentType "application/json" `
+  -Body $body `
+  -Uri "http://localhost:8080/api/exports/range/email"
+```
+
+Example response:
+
+```json
+{
+  "fromDate": "2025-10-01",
+  "toDateExclusive": "2026-04-01",
+  "recipientEmail": "operator@example.com",
+  "status": "SENT"
+}
+```
+
+The recipient is part of the JSON body rather than the URL. The backend validates the address independently of the Angular form.
 
 ---
 
-## Error Responses
+## Email Delivery
 
-### Missing or Invalid Access Token
+### Message content
 
-A request without a valid access token returns HTTP `401 Unauthorized`.
+The email contains:
+
+* the configured sender address
+* the requested recipient address
+* a subject containing the export filename key
+* a short text describing the inclusive export period
+* one ZIP attachment containing telemetry, event and health CSV files
+
+### Temporary ZIP lifecycle
+
+The ZIP attachment is written to a temporary file so that larger exports do not need to be held completely in memory.
+
+The temporary file is deleted after successful delivery and also after delivery errors. A cleanup failure is logged without hiding the primary delivery result.
+
+### Local development with Mailpit
+
+Mailpit receives SMTP messages locally and exposes them in a browser.
 
 ```text
-WWW-Authenticate: Bearer
+SMTP host: mailpit
+SMTP port: 1025
+Web UI:    http://localhost:8025
 ```
 
-### Missing Operator Role
+Mailpit does not forward messages to public internet mailboxes. A real-looking recipient address appears only inside the local Mailpit inbox.
 
-An authenticated user without the `OPERATOR` role receives HTTP `403 Forbidden`.
+![Mailpit Export Email](images/angular-mailpit.png)
 
-Example header:
+Example local configuration:
 
-```text
-Bearer error="insufficient_scope"
+```properties
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_SMTP_AUTH=false
+MAIL_SMTP_STARTTLS_ENABLE=false
+
+EXPORT_MAIL_ENABLED=true
+EXPORT_MAIL_FROM=no-reply@industrial-monitoring.local
+EXPORT_MAIL_ANNUAL_RECIPIENT=operator@example.com
 ```
 
-### Invalid Export Year
+### External SMTP provider
 
-A year before 2000 or later than the most recently completed calendar year returns HTTP `400 Bad Request`.
+A real SMTP relay can be selected without changing the Java implementation.
 
-Example for a request made during 2026:
+```properties
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_USERNAME=your_smtp_login
+MAIL_PASSWORD=your_smtp_secret
+MAIL_SMTP_AUTH=true
+MAIL_SMTP_STARTTLS_ENABLE=true
 
-```json
-{
-  "type": "about:blank",
-  "title": "Invalid export year",
-  "status": 400,
-  "detail": "Export year must be between 2000 and 2025. Use a range export for the current year.",
-  "instance": "/api/exports/yearly"
-}
+EXPORT_MAIL_ENABLED=true
+EXPORT_MAIL_FROM=verified-sender@example.com
+EXPORT_MAIL_ANNUAL_RECIPIENT=operator@example.com
 ```
 
-### Invalid Export Period
+Requirements depend on the provider, but commonly include:
 
-An empty, reversed, pre-2000 or excessively future-dated range returns HTTP `400 Bad Request`.
+* a dedicated SMTP login
+* an SMTP key or password
+* authenticated SMTP
+* STARTTLS
+* a verified or accepted sender address
 
-```json
-{
-  "type": "about:blank",
-  "title": "Invalid export period",
-  "status": 400,
-  "detail": "Export start date must be before the exclusive end date",
-  "instance": "/api/exports/range"
-}
+SMTP credentials belong only in the local `.env` or a deployment secret store. They must never be committed.
+
+### Docker Compose selection
+
+The backend environment uses variable-based SMTP values with a Mailpit fallback.
+
+```yaml
+MAIL_HOST: ${MAIL_HOST:-mailpit}
+MAIL_PORT: "${MAIL_PORT:-1025}"
+MAIL_USERNAME: ${MAIL_USERNAME:-}
+MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+MAIL_SMTP_AUTH: "${MAIL_SMTP_AUTH:-false}"
+MAIL_SMTP_STARTTLS_ENABLE: "${MAIL_SMTP_STARTTLS_ENABLE:-false}"
 ```
 
-### Export Conflict
+Changing `.env` values requires recreating the backend container:
 
-The yearly and range job-start endpoints can return HTTP `409 Conflict` when the same job instance is already running, already completed or cannot currently be restarted.
-
-```json
-{
-  "type": "about:blank",
-  "title": "Export conflict",
-  "status": 409,
-  "detail": "Export for period 2022 is already running, completed or cannot currently be restarted",
-  "instance": "/api/exports/yearly"
-}
+```powershell
+docker compose up -d --force-recreate backend
 ```
 
-The ZIP download endpoint handles completed exports differently: it reuses the existing final directory instead of starting the same job again.
+A new image build is needed only when application code, dependencies or the Dockerfile changed.
 
 ---
 
-## Configuration
+## Scheduled Annual Delivery
 
-| Variable            |         Default | Description                              |
-| ------------------- | --------------: | ---------------------------------------- |
-| `EXPORT_ENABLED`    |          `true` | Enables or disables the annual scheduler |
-| `EXPORT_OUTPUT_DIR` |       `exports` | Base directory for generated CSV files   |
-| `EXPORT_CHUNK_SIZE` |           `100` | Records processed per transaction        |
-| `EXPORT_CRON`       |   `0 0 2 1 1 *` | Scheduler cron expression                |
-| `EXPORT_ZONE`       | `Europe/Berlin` | Scheduler and export time zone           |
+The scheduler runs according to `EXPORT_CRON` and `EXPORT_ZONE`.
 
-Default cron expression:
+Default schedule:
 
 ```text
 0 0 2 1 1 *
@@ -498,31 +619,340 @@ Month:        January
 Day of week:  any
 ```
 
-When the backend runs through Docker Compose, `/app/exports` is mapped to the local `./exports` directory:
+At the default schedule, the application exports the previous completed calendar year.
+
+Example:
+
+```text
+Scheduler execution: 2027-01-01 at 02:00 Europe/Berlin
+Export period:        2026-01-01 through 2027-01-01 exclusive
+Filename key:         2026
+```
+
+After the batch job returns `COMPLETED`, the scheduler checks the mail settings:
+
+```text
+EXPORT_MAIL_ENABLED=true
+EXPORT_MAIL_ANNUAL_RECIPIENT=operator@example.com
+```
+
+If delivery is disabled or no annual recipient is configured, the CSV export remains completed and only the email step is skipped.
+
+If SMTP delivery fails, the failure is logged and the published export remains available for later download or another delivery attempt.
+
+---
+
+## Configuration Reference
+
+### Export processing
+
+| Variable | Application default | Description |
+| --- | --- | --- |
+| `EXPORT_ENABLED` | `true` | Enables the scheduled yearly export component |
+| `EXPORT_OUTPUT_DIR` | `exports` | Base directory for staging and final exports |
+| `EXPORT_CHUNK_SIZE` | `100` | Records processed per Spring Batch transaction |
+| `EXPORT_CRON` | `0 0 2 1 1 *` | Scheduler cron expression |
+| `EXPORT_ZONE` | `Europe/Berlin` | Time zone for period boundaries and scheduling |
+
+Docker Compose normally maps the application directory to the project:
 
 ```yaml
 volumes:
   - ./exports:/app/exports
 ```
 
-Docker environment value:
+Typical container value:
 
-```dotenv
+```properties
 EXPORT_OUTPUT_DIR=/app/exports
+```
+
+### Export email behavior
+
+| Variable | Application default | Description |
+| --- | --- | --- |
+| `EXPORT_MAIL_ENABLED` | `false` | Enables email delivery in `ExportMailService` and the scheduler |
+| `EXPORT_MAIL_FROM` | `no-reply@industrial-monitoring.local` | Sender address used in MIME messages |
+| `EXPORT_MAIL_ANNUAL_RECIPIENT` | empty | Recipient for scheduled yearly delivery |
+
+### SMTP connection
+
+| Variable | Local default | Description |
+| --- | --- | --- |
+| `MAIL_HOST` | `localhost` in Spring / `mailpit` in Compose fallback | SMTP host |
+| `MAIL_PORT` | `1025` | SMTP port |
+| `MAIL_USERNAME` | empty | SMTP login |
+| `MAIL_PASSWORD` | empty | SMTP secret |
+| `MAIL_SMTP_AUTH` | `false` | Enables SMTP authentication |
+| `MAIL_SMTP_STARTTLS_ENABLE` | `false` | Enables STARTTLS |
+
+The application configures SMTP connection, read and write timeouts so a failing mail server does not block indefinitely.
+
+---
+
+## Validation and Error Handling
+
+### Invalid export year
+
+A year outside the supported range returns `400 Bad Request`.
+
+Example:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Invalid export year",
+  "status": 400,
+  "detail": "Export year must be between 2000 and the most recently permitted year",
+  "instance": "/api/exports/yearly"
+}
+```
+
+### Invalid export period
+
+An empty, reversed, too-early or excessively future-dated range returns `400 Bad Request`.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Invalid export period",
+  "status": 400,
+  "detail": "Export start date must be before the exclusive end date",
+  "instance": "/api/exports/range"
+}
+```
+
+### Invalid recipient address
+
+`ExportEmailRequest` requires:
+
+```text
+fromDate        -> not null
+
+toDateExclusive -> not null
+
+recipientEmail  -> not blank and valid email syntax
+```
+
+Invalid JSON request data is rejected before export preparation or mail delivery begins.
+
+### Export conflict
+
+A running, completed or non-restartable job instance can return `409 Conflict`.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Export conflict",
+  "status": 409,
+  "detail": "Export for the requested period is already running, completed or cannot currently be restarted",
+  "instance": "/api/exports/yearly"
+}
+```
+
+### Missing published files
+
+Download and email delivery require a final export directory containing CSV files. Missing directories or empty final directories cause the operation to fail rather than returning an empty archive.
+
+### SMTP failure
+
+Manual delivery returns a server error when the SMTP connection, authentication or send operation fails. The Angular frontend shows:
+
+```text
+The export could not be sent by email.
+```
+
+The completed CSV export remains available.
+
+For scheduled delivery, the error is logged and the scheduler invocation finishes without deleting the export.
+
+---
+
+## Security Considerations
+
+* Export access is restricted to `OPERATOR` in the backend.
+* A `VIEWER` cannot download or send exports.
+* The recipient address is sent in a JSON body instead of a query string.
+* Backend validation is required even though Angular performs its own validation.
+* SMTP passwords and keys must remain outside Git.
+* `.env` is excluded through `.gitignore`.
+* `EXPORT_MAIL_FROM` must use an address accepted by the configured SMTP provider.
+* SMTP error logs must not expose passwords or keys.
+* Email delivery can move monitoring data outside the platform and therefore requires the same export authorization as ZIP download.
+
+---
+
+## Testing
+
+The backend test suite covers the main export and delivery paths.
+
+### Export period and file tests
+
+* yearly and flexible period calculation
+* inclusive and exclusive date handling
+* directory and filename keys
+* telemetry, event and health CSV paths
+* ZIP creation
+* CSV escaping
+* spreadsheet-formula protection
+
+### `ExportPreparationServiceTest`
+
+* reuses an existing final export without starting another job
+* starts a range job when no completed export exists
+* requires a completed execution and a published directory
+
+### `ExportMailServiceTest`
+
+* creates and sends a MIME message
+* uses the configured sender
+* uses the requested recipient
+* creates the expected subject
+* attaches a generated ZIP file
+* rejects disabled delivery
+* rejects a blank recipient
+
+### Controller tests
+
+* sends a prepared range export by email
+* returns `SENT` after successful delivery
+* rejects an invalid email address before invoking export services
+* preserves ISO date serialization in the response
+
+### Authorization tests
+
+* rejects requests without a token
+* forbids email export for `VIEWER`
+* allows email export for `OPERATOR`
+* avoids invoking export services after authorization failure
+
+### Scheduler tests
+
+* calculates the previous year in the configured time zone
+* starts the annual export
+* handles job-start failures without crashing the scheduler
+* sends only a completed annual export
+* uses the configured annual recipient
+
+Run the complete backend suite:
+
+```powershell
+cd backend
+.\mvnw.cmd clean test
+```
+
+Run selected tests:
+
+```powershell
+.\mvnw.cmd -Dtest=ExportPreparationServiceTest test
+.\mvnw.cmd -Dtest=ExportMailServiceTest test
+.\mvnw.cmd -Dtest=ExportControllerTest test
+.\mvnw.cmd -Dtest=ExportAuthorizationTest test
+.\mvnw.cmd -Dtest=ExportSchedulerTest test
+```
+
+Frontend production build:
+
+```powershell
+cd frontend/angular-monitoring-frontend
+npm run build
 ```
 
 ---
 
-## Export Test Coverage
+## Troubleshooting
 
-The backend test suite includes coverage for:
+### Download works but email delivery fails
 
-* Annual and flexible export-period calculation
-* Date-range validation
-* Export file and directory management
-* CSV escaping and spreadsheet-formula protection
-* Spring Batch identifying parameters
-* Duplicate and conflict handling
-* Yearly scheduler calculation
-* Scheduler error handling
-* REST responses for successful, invalid and conflicting exports
+This usually means that export preparation and ZIP creation succeeded while the SMTP connection failed.
+
+Check the active container configuration without printing the password:
+
+```powershell
+docker exec industrial-monitoring-backend printenv MAIL_HOST
+docker exec industrial-monitoring-backend printenv MAIL_PORT
+docker exec industrial-monitoring-backend printenv MAIL_USERNAME
+docker exec industrial-monitoring-backend printenv MAIL_SMTP_AUTH
+docker exec industrial-monitoring-backend printenv MAIL_SMTP_STARTTLS_ENABLE
+docker exec industrial-monitoring-backend printenv EXPORT_MAIL_FROM
+```
+
+Confirm only that a password is present:
+
+```powershell
+docker exec industrial-monitoring-backend sh -c 'if [ -n "$MAIL_PASSWORD" ]; then echo "SMTP secret is set"; else echo "SMTP secret is missing"; fi'
+```
+
+Filter recent logs:
+
+```powershell
+docker logs industrial-monitoring-backend --since 10m 2>&1 |
+  Select-String -Pattern "Authentication|535|Could not send|MailSendException|SMTPSendFailed|STARTTLS" -Context 3,8
+```
+
+Common causes:
+
+* account email used instead of the provider-specific SMTP login
+* account password used instead of an SMTP key
+* sender address not verified by the provider
+* authentication or STARTTLS flags not enabled
+* backend container not recreated after changing `.env`
+
+### Message appears in Mailpit but not in a real inbox
+
+This is expected when `MAIL_HOST=mailpit`. Mailpit captures the message locally and does not forward it.
+
+Use an external SMTP relay for real delivery.
+
+### Email feature reports that delivery is disabled
+
+Check:
+
+```properties
+EXPORT_MAIL_ENABLED=true
+```
+
+Recreate the backend container after changing `.env`.
+
+### Final export directory is missing
+
+Inspect:
+
+```powershell
+docker compose logs backend --tail=200
+```
+
+and verify the mounted export directory:
+
+```text
+./exports -> /app/exports
+```
+
+### Duplicate export conflict
+
+A completed period is normally reused by the download and email preparation flow. Directly starting the same identifying Spring Batch job again can still produce a conflict because Spring Batch protects completed job instances.
+
+---
+
+## Operational Notes
+
+* Mail delivery is synchronous in the current implementation. The HTTP request completes after the SMTP send call returns.
+* Large exports increase ZIP creation and SMTP transfer time.
+* The final CSV files are the durable application artifact; the temporary email ZIP is disposable.
+* SMTP delivery status confirms that the configured relay accepted the message, not necessarily that the recipient opened it.
+* Provider-specific quotas, attachment limits and sender policies must be considered in deployment configuration.
+
+---
+
+## Possible Future Improvements
+
+The following items are not part of the current implementation:
+
+* asynchronous mail delivery through a queue
+* persisted delivery history and retry state
+* automatic retries with backoff
+* recipient allowlists or domain restrictions
+* configurable email templates
+* delivery metrics and alerts
+* encryption of exported archives
+* retention and cleanup policies for published exports
