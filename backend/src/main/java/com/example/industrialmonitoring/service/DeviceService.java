@@ -1,7 +1,6 @@
 package com.example.industrialmonitoring.service;
 
 import com.example.industrialmonitoring.dto.DeviceResponse;
-import com.example.industrialmonitoring.entity.DeviceEntity;
 import com.example.industrialmonitoring.exception.DeviceNotFoundException;
 import com.example.industrialmonitoring.mapper.DeviceMapper;
 import com.example.industrialmonitoring.repository.DeviceRepository;
@@ -38,8 +37,6 @@ public class DeviceService {
 
     @Transactional
     public void ensureDeviceExists(String deviceId) {
-        if (!deviceRepository.existsByDeviceId(deviceId)) {
-            deviceRepository.save(new DeviceEntity(deviceId));
-        }
+        deviceRepository.insertIfAbsent(deviceId);
     }
 }
