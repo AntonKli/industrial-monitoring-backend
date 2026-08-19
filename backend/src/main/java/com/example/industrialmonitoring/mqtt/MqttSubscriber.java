@@ -7,6 +7,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 
 @ConditionalOnProperty(
         name = "mqtt.subscriber.enabled",
@@ -59,28 +63,53 @@ public class MqttSubscriber {
         log.info("MQTT subscriptions active");
     }
 
-    private void handleMessage(
+    void handleMessage(
             String topic,
             MqttMessage message
     ) {
 
-        String payload = new String(message.getPayload());
-
         log.info(
-                "MQTT message received. topic={} payload={}",
-                topic,
-                payload
+                "MQTT message received. topic={}",
+                topic
         );
 
         try {
+            String payload = decodePayload(message.getPayload());
+
             mqttMessageDispatcher.dispatch(
                     topic,
                     payload
             );
+        } catch (InvalidMqttMessageException exception) {
+
+            log.warn(
+                    "Rejected MQTT message. topic={} errorType={} reason={}",
+                    topic,
+                    exception.getErrorType(),
+                    exception.getMessage()
+            );
         } catch (Exception exception) {
 
             log.error(
-                    "Failed to process MQTT message",
+                    "Failed to process MQTT message. topic={}",
+                    topic,
+                    exception
+            );
+        }
+    }
+
+    private String decodePayload(byte[] payload) {
+        try {
+            return StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(payload))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            throw new InvalidMqttMessageException(
+                    MqttMessageErrorType.INVALID_PAYLOAD_ENCODING,
+                    "MQTT payload is not valid UTF-8",
                     exception
             );
         }

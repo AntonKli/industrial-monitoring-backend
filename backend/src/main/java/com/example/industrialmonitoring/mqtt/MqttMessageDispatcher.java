@@ -27,12 +27,9 @@ public class MqttMessageDispatcher {
         MqttTopicInfo topicInfo = mqttTopicParser.parse(topic);
 
         switch (topicInfo.messageType()) {
-            case "telemetry" -> handleTelemetry(topicInfo.deviceId(), payload);
-            case "events" -> handleEvent(topicInfo.deviceId(), payload);
-            case "health" -> handleHealth(topicInfo.deviceId(), payload);
-            default -> throw new IllegalArgumentException(
-                    "Unsupported MQTT message type: " + topicInfo.messageType()
-            );
+            case TELEMETRY -> handleTelemetry(topicInfo.deviceId(), payload);
+            case EVENTS -> handleEvent(topicInfo.deviceId(), payload);
+            case HEALTH -> handleHealth(topicInfo.deviceId(), payload);
         }
     }
 
