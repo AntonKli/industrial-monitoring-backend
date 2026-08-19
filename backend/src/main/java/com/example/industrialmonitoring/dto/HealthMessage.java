@@ -43,5 +43,5 @@ public record HealthMessage(
         @JsonProperty("diag_last_error")
         Integer diagLastError
 
-) {
+) implements VersionedMqttMessage {
 }

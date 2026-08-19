@@ -187,6 +187,28 @@ rtz/edge01/events
 rtz/edge01/health
 ```
 
+The backend validates the topic and JSON payload before any database access:
+
+* topics must follow `<configured-root>/<device-id>/<telemetry|events|health>`
+* the topic root must match `MQTT_TOPIC_ROOT`
+* device IDs must not be blank and must not exceed 100 characters
+* `v`, `ts` and `seq` are required for every message type
+* protocol version `v` must be `1`
+* JSON scalar types must match the DTO contract; strings are not coerced to
+  numbers or booleans, and floating-point values are not coerced to integers
+* event `type` values must not be blank and must not exceed 100 characters
+* `temp_c`, when present, must fit the database precision `NUMERIC(6,2)`
+
+Unknown JSON fields are currently tolerated for forward compatibility. No
+additional domain limits are imposed on timestamps, sequence numbers, RPM,
+health states or diagnostic codes because the gateway contract does not define
+such limits.
+
+Rejected messages are classified as malformed JSON, invalid UTF-8 payloads,
+constraint violations, unsupported protocol versions, invalid topics or
+unsupported message types. They do not reach persistence, and their full
+payload is not written to INFO or WARN logs.
+
 ---
 
 ## REST API

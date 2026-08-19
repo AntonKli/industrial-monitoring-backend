@@ -1,0 +1,10 @@
+package com.example.industrialmonitoring.mqtt;
+
+public enum MqttMessageErrorType {
+    MALFORMED_JSON,
+    INVALID_PAYLOAD_ENCODING,
+    CONSTRAINT_VIOLATION,
+    UNSUPPORTED_PROTOCOL_VERSION,
+    INVALID_TOPIC,
+    UNSUPPORTED_MESSAGE_TYPE
+}

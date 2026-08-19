@@ -1,6 +1,7 @@
 package com.example.industrialmonitoring.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
@@ -16,8 +17,9 @@ public record TelemetryMessage(
         Long seq,
 
         @JsonProperty("temp_c")
+        @Digits(integer = 4, fraction = 2)
         BigDecimal temperatureC,
 
         Integer rpm
-) {
+) implements VersionedMqttMessage {
 }

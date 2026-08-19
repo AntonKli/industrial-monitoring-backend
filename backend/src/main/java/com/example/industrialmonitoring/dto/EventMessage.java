@@ -1,7 +1,9 @@
 package com.example.industrialmonitoring.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public record EventMessage(
         @NotNull
@@ -13,8 +15,9 @@ public record EventMessage(
         @NotNull
         Long seq,
 
-        @NotNull
+        @NotBlank
+        @Size(max = 100)
         @JsonProperty("type")
         String eventType
-) {
+) implements VersionedMqttMessage {
 }
