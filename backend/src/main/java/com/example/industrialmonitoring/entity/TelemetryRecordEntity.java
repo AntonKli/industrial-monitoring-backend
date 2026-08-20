@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "telemetry_records")
@@ -21,6 +22,9 @@ public class TelemetryRecordEntity {
 
     @Column(name = "sequence_number", nullable = false)
     private Long sequenceNumber;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
 
     @Column(name = "temperature_c", precision = 6, scale = 2)
     private BigDecimal temperatureC;
@@ -63,6 +67,10 @@ public class TelemetryRecordEntity {
 
     public Long getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
     }
 
     public BigDecimal getTemperatureC() {

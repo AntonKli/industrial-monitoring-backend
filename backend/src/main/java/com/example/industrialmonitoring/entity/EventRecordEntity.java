@@ -3,6 +3,7 @@ package com.example.industrialmonitoring.entity;
 import jakarta.persistence.*;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "event_records")
@@ -20,6 +21,9 @@ public class EventRecordEntity {
 
     @Column(name = "sequence_number", nullable = false)
     private Long sequenceNumber;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
 
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
@@ -58,6 +62,10 @@ public class EventRecordEntity {
 
     public Long getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
     }
 
     public String getEventType() {

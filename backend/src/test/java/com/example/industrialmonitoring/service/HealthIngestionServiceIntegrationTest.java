@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,9 +63,10 @@ class HealthIngestionServiceIntegrationTest {
     @Test
     void shouldCreateDeviceAndPersistHealthRecord() {
         HealthMessage message = new HealthMessage(
-                1,
+                2,
                 123002L,
                 44L,
+                "550e8400-e29b-41d4-a716-446655440000",
                 2,
                 true,
                 true,
@@ -90,6 +92,8 @@ class HealthIngestionServiceIntegrationTest {
         assertThat(savedRecord.getDeviceId()).isEqualTo("edge01");
         assertThat(savedRecord.getGatewayTimestamp()).isEqualTo(123002L);
         assertThat(savedRecord.getSequenceNumber()).isEqualTo(44L);
+        assertThat(savedRecord.getSessionId())
+                .isEqualTo(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"));
         assertThat(savedRecord.getState()).isEqualTo(2);
         assertThat(savedRecord.getMqttConnected()).isTrue();
         assertThat(savedRecord.getPubLastOk()).isTrue();

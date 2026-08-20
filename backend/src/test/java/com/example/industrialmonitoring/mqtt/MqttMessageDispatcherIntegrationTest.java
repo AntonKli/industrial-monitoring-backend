@@ -26,6 +26,8 @@ import static org.mockito.Mockito.mock;
 @Testcontainers
 class MqttMessageDispatcherIntegrationTest {
 
+    private static final String SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+
     @Container
     static final PostgreSQLContainer<?> postgres =
             new PostgreSQLContainer<>("postgres:16")
@@ -66,7 +68,8 @@ class MqttMessageDispatcherIntegrationTest {
     void shouldPersistValidMessageFromTopicAndJson() {
         dispatcher.dispatch(
                 "rtz/edge01/telemetry",
-                "{\"v\":1,\"ts\":123000,\"seq\":3,\"temp_c\":30.2,\"rpm\":1600}"
+                "{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID
+                        + "\",\"temp_c\":30.2,\"rpm\":1600}"
         );
 
         assertThat(deviceRepository.existsByDeviceId("edge01")).isTrue();
@@ -85,7 +88,7 @@ class MqttMessageDispatcherIntegrationTest {
     void shouldNotPersistDeviceOrRecordForInvalidMessage() {
         assertThatThrownBy(() -> dispatcher.dispatch(
                 "rtz/edge01/telemetry",
-                "{\"v\":2,\"ts\":123000,\"seq\":3}"
+                "{\"v\":1,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID + "\"}"
         )).isInstanceOfSatisfying(
                 InvalidMqttMessageException.class,
                 exception -> assertThat(exception.getErrorType())
@@ -116,7 +119,8 @@ class MqttMessageDispatcherIntegrationTest {
 
     private byte[] invalidUtf8TelemetryPayload() {
         byte[] prefix = (
-                "{\"v\":1,\"ts\":123000,\"seq\":3,\"note\":\""
+                "{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID
+                        + "\",\"note\":\""
         ).getBytes(StandardCharsets.UTF_8);
         byte[] suffix = "\"}".getBytes(StandardCharsets.UTF_8);
         byte[] payload = Arrays.copyOf(

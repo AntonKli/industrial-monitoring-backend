@@ -8,6 +8,7 @@ import com.example.industrialmonitoring.repository.DeviceRepository;
 import com.example.industrialmonitoring.repository.EventRecordRepository;
 import com.example.industrialmonitoring.repository.HealthRecordRepository;
 import com.example.industrialmonitoring.repository.TelemetryRecordRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,195 +34,224 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 class MqttIngestionServiceIntegrationTest {
 
+    private static final String SESSION_A = "550e8400-e29b-41d4-a716-446655440000";
+    private static final String SESSION_B = "550e8400-e29b-41d4-a716-446655440001";
+
     @Container
-    static final PostgreSQLContainer<?> postgres =
-            new PostgreSQLContainer<>("postgres:16")
-                    .withDatabaseName("industrial_monitoring_test")
-                    .withUsername("test_user")
-                    .withPassword("test_password");
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+            .withDatabaseName("industrial_monitoring_test")
+            .withUsername("test_user")
+            .withPassword("test_password");
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
-
-        registry.add("mqtt.broker-url", () -> "tcp://localhost:1883");
-        registry.add("mqtt.client-id", () -> "test-client-ingestion");
-        registry.add("mqtt.topic-root", () -> "rtz");
-        registry.add("mqtt.device-id", () -> "edge01");
-        registry.add("mqtt.username", () -> "edge");
-        registry.add("mqtt.password", () -> "edge_password");
+        registry.add("mqtt.subscriber.enabled", () -> false);
     }
 
     @Autowired
-    private MqttIngestionService mqttIngestionService;
-
+    private MqttIngestionService ingestionService;
     @Autowired
     private DeviceRepository deviceRepository;
-
     @Autowired
-    private TelemetryRecordRepository telemetryRecordRepository;
-
+    private TelemetryRecordRepository telemetryRepository;
     @Autowired
-    private EventRecordRepository eventRecordRepository;
-
+    private EventRecordRepository eventRepository;
     @Autowired
-    private HealthRecordRepository healthRecordRepository;
+    private HealthRecordRepository healthRepository;
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
-        telemetryRecordRepository.deleteAll();
-        eventRecordRepository.deleteAll();
-        healthRecordRepository.deleteAll();
+        telemetryRepository.deleteAll();
+        eventRepository.deleteAll();
+        healthRepository.deleteAll();
         deviceRepository.deleteAll();
     }
 
     @Test
-    void shouldCreateDeviceAndPersistTelemetryRecord() {
-        TelemetryMessage message = new TelemetryMessage(
-                1,
-                123000L,
-                42L,
-                BigDecimal.valueOf(31.7),
-                1750
-        );
+    void shouldStoreThenDeduplicateTelemetryAndKeepFirstPayload() {
+        IngestionResult first = ingestionService.ingestTelemetry(
+                "edge01", telemetry(SESSION_A, 42, "31.7", 1750));
+        IngestionResult second = ingestionService.ingestTelemetry(
+                "edge01", telemetry(SESSION_A, 42, "99.9", 9999));
 
-        mqttIngestionService.ingestTelemetry("edge01", message);
-
-        assertThat(deviceRepository.existsByDeviceId("edge01")).isTrue();
-
-        List<TelemetryRecordEntity> records =
-                telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc("edge01");
-
+        assertThat(first).isEqualTo(IngestionResult.STORED);
+        assertThat(second).isEqualTo(IngestionResult.DUPLICATE);
+        List<TelemetryRecordEntity> records = telemetryRepository.findAll();
         assertThat(records).hasSize(1);
-
-        TelemetryRecordEntity savedRecord = records.getFirst();
-
-        assertThat(savedRecord.getDeviceId()).isEqualTo("edge01");
-        assertThat(savedRecord.getGatewayTimestamp()).isEqualTo(123000L);
-        assertThat(savedRecord.getSequenceNumber()).isEqualTo(42L);
-        assertThat(savedRecord.getTemperatureC()).isEqualByComparingTo("31.7");
-        assertThat(savedRecord.getRpm()).isEqualTo(1750);
-        assertThat(savedRecord.getCreatedAt()).isNotNull();
+        assertThat(records.getFirst().getTemperatureC()).isEqualByComparingTo("31.7");
+        assertThat(records.getFirst().getRpm()).isEqualTo(1750);
     }
 
     @Test
-    void shouldAtomicallyRegisterOneDeviceAndPersistAllConcurrentRecords() throws Exception {
-        int recordsPerType = 8;
-        List<Callable<Void>> ingestions = new ArrayList<>();
+    void shouldStoreThenDeduplicateEvent() {
+        assertThat(ingestionService.ingestEvent("edge01", event(SESSION_A, 7, "ALARM_RAISED")))
+                .isEqualTo(IngestionResult.STORED);
+        assertThat(ingestionService.ingestEvent("edge01", event(SESSION_A, 7, "ALARM_CLEARED")))
+                .isEqualTo(IngestionResult.DUPLICATE);
+        assertThat(eventRepository.findAll()).singleElement()
+                .extracting(record -> record.getEventType()).isEqualTo("ALARM_RAISED");
+    }
 
-        for (int i = 0; i < recordsPerType; i++) {
-            long sequenceNumber = i;
-            ingestions.add(() -> {
-                mqttIngestionService.ingestTelemetry("concurrent-device", telemetryMessage(sequenceNumber));
-                return null;
-            });
-            ingestions.add(() -> {
-                mqttIngestionService.ingestEvent(
-                        "concurrent-device",
-                        new EventMessage(1, 123000L + sequenceNumber, sequenceNumber, "STATUS")
-                );
-                return null;
-            });
-            ingestions.add(() -> {
-                mqttIngestionService.ingestHealth("concurrent-device", healthMessage(sequenceNumber));
-                return null;
-            });
+    @Test
+    void shouldStoreThenDeduplicateHealth() {
+        assertThat(ingestionService.ingestHealth("edge01", health(SESSION_A, 8, 1)))
+                .isEqualTo(IngestionResult.STORED);
+        assertThat(ingestionService.ingestHealth("edge01", health(SESSION_A, 8, 2)))
+                .isEqualTo(IngestionResult.DUPLICATE);
+        assertThat(healthRepository.findAll()).singleElement()
+                .extracting(record -> record.getState()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldAllowSameSequenceForDifferentSessions() {
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_A, 1, "31.7", 1750));
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_B, 1, "31.7", 1750));
+        assertThat(telemetryRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldAllowSameSessionAndSequenceForDifferentDevices() {
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_A, 1, "31.7", 1750));
+        ingestionService.ingestTelemetry("edge02", telemetry(SESSION_A, 1, "31.7", 1750));
+        assertThat(telemetryRepository.count()).isEqualTo(2);
+        assertThat(deviceRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldAllowDifferentSequencesInSameSession() {
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_A, 1, "31.7", 1750));
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_A, 2, "31.7", 1750));
+        assertThat(telemetryRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldScopeIdentityByRecordTable() {
+        ingestionService.ingestTelemetry("edge01", telemetry(SESSION_A, 5, "31.7", 1750));
+        ingestionService.ingestEvent("edge01", event(SESSION_A, 5, "STATUS"));
+        ingestionService.ingestHealth("edge01", health(SESSION_A, 5, 1));
+
+        assertThat(telemetryRepository.count()).isOne();
+        assertThat(eventRepository.count()).isOne();
+        assertThat(healthRepository.count()).isOne();
+    }
+
+    @Test
+    void shouldStoreConcurrentDistinctMessagesForSameDevice() throws Exception {
+        int sequences = 8;
+        List<Callable<IngestionResult>> tasks = new ArrayList<>();
+        for (int i = 0; i < sequences; i++) {
+            long sequence = i;
+            tasks.add(() -> ingestionService.ingestTelemetry(
+                    "concurrent-device", telemetry(SESSION_A, sequence, "31.7", 1750)));
+            tasks.add(() -> ingestionService.ingestEvent(
+                    "concurrent-device", event(SESSION_A, sequence, "STATUS")));
+            tasks.add(() -> ingestionService.ingestHealth(
+                    "concurrent-device", health(SESSION_A, sequence, 1)));
         }
 
-        runConcurrently(ingestions);
+        List<IngestionResult> results = runConcurrently(tasks);
 
-        assertThat(deviceRepository.count()).isEqualTo(1);
-        assertThat(telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc("concurrent-device"))
-                .hasSize(recordsPerType);
-        assertThat(eventRecordRepository.findByDeviceIdOrderByCreatedAtDesc("concurrent-device"))
-                .hasSize(recordsPerType);
-        assertThat(healthRecordRepository.findByDeviceIdOrderByCreatedAtDesc("concurrent-device"))
-                .hasSize(recordsPerType);
+        assertThat(results).hasSize(24).containsOnly(IngestionResult.STORED);
+        assertThat(deviceRepository.count()).isOne();
+        assertThat(telemetryRepository.count()).isEqualTo(sequences);
+        assertThat(eventRepository.count()).isEqualTo(sequences);
+        assertThat(healthRepository.count()).isEqualTo(sequences);
     }
 
     @Test
-    void shouldTreatExistingDeviceRegistrationAsNoOpAndPersistRecord() {
-        mqttIngestionService.ingestTelemetry("existing-device", telemetryMessage(1));
-
-        mqttIngestionService.ingestTelemetry("existing-device", telemetryMessage(2));
-
-        assertThat(deviceRepository.count()).isEqualTo(1);
-        assertThat(telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc("existing-device"))
-                .hasSize(2);
-    }
-
-    @Test
-    void shouldRegisterAndPersistConcurrentMessagesForDifferentDevices() throws Exception {
+    void shouldStoreConcurrentTelemetryForDifferentDevices() throws Exception {
         int deviceCount = 12;
-        List<Callable<Void>> ingestions = new ArrayList<>();
-
+        List<Callable<IngestionResult>> tasks = new ArrayList<>();
         for (int i = 0; i < deviceCount; i++) {
             String deviceId = "parallel-device-" + i;
-            long sequenceNumber = i;
-            ingestions.add(() -> {
-                mqttIngestionService.ingestTelemetry(deviceId, telemetryMessage(sequenceNumber));
-                return null;
-            });
+            long sequence = i;
+            tasks.add(() -> ingestionService.ingestTelemetry(
+                    deviceId, telemetry(SESSION_A, sequence, "31.7", 1750)));
         }
 
-        runConcurrently(ingestions);
+        List<IngestionResult> results = runConcurrently(tasks);
 
+        assertThat(results).hasSize(deviceCount).containsOnly(IngestionResult.STORED);
         assertThat(deviceRepository.count()).isEqualTo(deviceCount);
-        assertThat(telemetryRecordRepository.count()).isEqualTo(deviceCount);
+        assertThat(telemetryRepository.count()).isEqualTo(deviceCount);
     }
 
-    private TelemetryMessage telemetryMessage(long sequenceNumber) {
-        return new TelemetryMessage(
-                1,
-                123000L + sequenceNumber,
-                sequenceNumber,
-                BigDecimal.valueOf(31.7),
-                1750
-        );
+    @Test
+    void shouldDeduplicateConcurrentTelemetryAndRegisterDeviceAtomically() throws Exception {
+        int attempts = 12;
+        List<Callable<IngestionResult>> tasks = new ArrayList<>();
+        for (int i = 0; i < attempts; i++) {
+            tasks.add(() -> ingestionService.ingestTelemetry(
+                    "concurrent-device", telemetry(SESSION_A, 99, "31.7", 1750)));
+        }
+
+        List<IngestionResult> results = runConcurrently(tasks);
+
+        assertThat(results).filteredOn(IngestionResult.STORED::equals).hasSize(1);
+        assertThat(results).filteredOn(IngestionResult.DUPLICATE::equals).hasSize(attempts - 1);
+        assertThat(telemetryRepository.count()).isOne();
+        assertThat(deviceRepository.count()).isOne();
     }
 
-    private HealthMessage healthMessage(long sequenceNumber) {
-        return new HealthMessage(
-                1,
-                123000L + sequenceNumber,
-                sequenceNumber,
-                1,
-                true,
-                true,
-                0,
-                0L,
-                3600L,
-                0L,
-                sequenceNumber,
-                0L,
-                0
-        );
+    @Test
+    void shouldUpdateSavedAndDuplicateMetrics() {
+        double savedBefore = counter("industrial_telemetry_records_saved_total");
+        double duplicatesBefore = duplicateCounter("telemetry");
+
+        ingestionService.ingestTelemetry("metrics-device", telemetry(SESSION_A, 3, "31.7", 1750));
+        ingestionService.ingestTelemetry("metrics-device", telemetry(SESSION_A, 3, "31.7", 1750));
+
+        assertThat(counter("industrial_telemetry_records_saved_total") - savedBefore).isEqualTo(1.0);
+        assertThat(duplicateCounter("telemetry") - duplicatesBefore).isEqualTo(1.0);
     }
 
-    private void runConcurrently(List<Callable<Void>> tasks) throws Exception {
+    private double counter(String name) {
+        return meterRegistry.get(name).counter().count();
+    }
+
+    private double duplicateCounter(String messageType) {
+        return meterRegistry.get("industrial_mqtt_messages_duplicate_total")
+                .tag("message_type", messageType).counter().count();
+    }
+
+    private TelemetryMessage telemetry(String sessionId, long sequence, String temperature, int rpm) {
+        return new TelemetryMessage(2, 123000L + sequence, sequence, sessionId,
+                new BigDecimal(temperature), rpm);
+    }
+
+    private EventMessage event(String sessionId, long sequence, String type) {
+        return new EventMessage(2, 123000L + sequence, sequence, sessionId, type);
+    }
+
+    private HealthMessage health(String sessionId, long sequence, int state) {
+        return new HealthMessage(2, 123000L + sequence, sequence, sessionId, state,
+                true, true, 0, 0L, 3600L, 0L, sequence, 0L, 0);
+    }
+
+    private List<IngestionResult> runConcurrently(List<Callable<IngestionResult>> tasks) throws Exception {
         CountDownLatch ready = new CountDownLatch(tasks.size());
         CountDownLatch start = new CountDownLatch(1);
-        List<Callable<Void>> synchronizedTasks = tasks.stream()
-                .<Callable<Void>>map(task -> () -> {
-                    ready.countDown();
-                    start.await();
-                    return task.call();
-                })
-                .toList();
-
         try (ExecutorService executor = Executors.newFixedThreadPool(tasks.size())) {
-            List<Future<Void>> futures = synchronizedTasks.stream()
-                    .map(executor::submit)
+            List<Future<IngestionResult>> futures = tasks.stream()
+                    .map(task -> executor.submit(() -> {
+                        ready.countDown();
+                        start.await();
+                        return task.call();
+                    }))
                     .toList();
-
             ready.await();
             start.countDown();
 
-            for (Future<Void> future : futures) {
-                future.get();
+            List<IngestionResult> results = new ArrayList<>();
+            for (Future<IngestionResult> future : futures) {
+                results.add(future.get());
             }
+            return results;
         }
     }
 }

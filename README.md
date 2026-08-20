@@ -171,9 +171,10 @@ Example telemetry message:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "ts": 123000,
   "seq": 3,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "temp_c": 30.2,
   "rpm": 1600
 }
@@ -192,17 +193,26 @@ The backend validates the topic and JSON payload before any database access:
 * topics must follow `<configured-root>/<device-id>/<telemetry|events|health>`
 * the topic root must match `MQTT_TOPIC_ROOT`
 * device IDs must not be blank and must not exceed 100 characters
-* `v`, `ts` and `seq` are required for every message type
-* protocol version `v` must be `1`
+* `v`, `ts`, `seq` and `session_id` are required for every message type
+* protocol version `v` must be `2`; version 1 is no longer accepted
+* `session_id` must be a canonical lowercase UUID and remains stable for one
+  gateway application run, including MQTT reconnects
+* `seq` must be between `0` and Java `Long.MAX_VALUE` (`2^63 - 1`)
 * JSON scalar types must match the DTO contract; strings are not coerced to
   numbers or booleans, and floating-point values are not coerced to integers
 * event `type` values must not be blank and must not exceed 100 characters
 * `temp_c`, when present, must fit the database precision `NUMERIC(6,2)`
 
 Unknown JSON fields are currently tolerated for forward compatibility. No
-additional domain limits are imposed on timestamps, sequence numbers, RPM,
-health states or diagnostic codes because the gateway contract does not define
-such limits.
+additional domain limits are imposed on timestamps, RPM, health states or
+diagnostic codes because the gateway contract does not define such limits.
+
+MQTT persistence is idempotent per message type using
+`(device_id, session_id, sequence_number)`. The gateway creates a new session
+ID for every application run and reuses the original session ID and sequence
+number for MQTT redeliveries and buffered telemetry replay. Duplicate delivery
+uses first-write-wins semantics: the original record remains unchanged even if
+a later payload with the same idempotency key contains different data.
 
 Rejected messages are classified as malformed JSON, invalid UTF-8 payloads,
 constraint violations, unsupported protocol versions, invalid topics or
@@ -397,7 +407,11 @@ Custom ingestion metrics:
 industrial_telemetry_records_saved_total
 industrial_event_records_saved_total
 industrial_health_records_saved_total
+industrial_mqtt_messages_duplicate_total{message_type="telemetry|event|health"}
 ```
+
+The duplicate counter uses the low-cardinality `message_type` tag with the
+values `telemetry`, `event` and `health`.
 
 ### Grafana Dashboard
 

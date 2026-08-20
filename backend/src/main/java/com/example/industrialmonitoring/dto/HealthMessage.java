@@ -2,6 +2,8 @@ package com.example.industrialmonitoring.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
 
 public record HealthMessage(
 
@@ -12,7 +14,13 @@ public record HealthMessage(
         Long ts,
 
         @NotNull
+        @PositiveOrZero
         Long seq,
+
+        @NotNull
+        @Pattern(regexp = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+        @JsonProperty("session_id")
+        String sessionId,
 
         Integer state,
 

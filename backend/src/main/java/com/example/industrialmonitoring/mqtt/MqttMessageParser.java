@@ -55,7 +55,7 @@ public class MqttMessageParser {
     }
 
     private void validateProtocolVersion(VersionedMqttMessage message) {
-        if (message.v() != null && message.v() != 1) {
+        if (message.v() != null && message.v() != 2) {
             throw new InvalidMqttMessageException(
                     MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION,
                     "Unsupported MQTT protocol version"

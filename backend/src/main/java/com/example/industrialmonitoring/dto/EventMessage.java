@@ -3,6 +3,8 @@ package com.example.industrialmonitoring.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 public record EventMessage(
@@ -13,7 +15,13 @@ public record EventMessage(
         Long ts,
 
         @NotNull
+        @PositiveOrZero
         Long seq,
+
+        @NotNull
+        @Pattern(regexp = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+        @JsonProperty("session_id")
+        String sessionId,
 
         @NotBlank
         @Size(max = 100)

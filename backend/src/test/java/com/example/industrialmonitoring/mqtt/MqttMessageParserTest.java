@@ -6,7 +6,6 @@ import com.example.industrialmonitoring.dto.TelemetryMessage;
 import com.example.industrialmonitoring.dto.VersionedMqttMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,250 +14,209 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MqttMessageParserTest {
 
+    private static final String SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
     private MqttMessageParser parser;
 
     @BeforeEach
     void setUp() {
-        Validator validator = Validation
-                .buildDefaultValidatorFactory()
-                .getValidator();
-
         parser = new MqttMessageParser(
                 new ObjectMapper(),
-                validator
+                Validation.buildDefaultValidatorFactory().getValidator()
         );
     }
 
     @Test
     void shouldParseValidTelemetryMessage() {
-        TelemetryMessage message = parser.parse(
-                """
-                        {
-                          "v": 1,
-                          "ts": 123000,
-                          "seq": 3,
-                          "temp_c": 30.2,
-                          "rpm": 1600
-                        }
-                        """,
-                TelemetryMessage.class
-        );
-
-        assertThat(message.v()).isEqualTo(1);
-        assertThat(message.ts()).isEqualTo(123000L);
+        TelemetryMessage message = parser.parse(telemetryPayload("3"), TelemetryMessage.class);
+        assertThat(message.v()).isEqualTo(2);
         assertThat(message.seq()).isEqualTo(3L);
+        assertThat(message.sessionId()).isEqualTo(SESSION_ID);
         assertThat(message.temperatureC()).isEqualByComparingTo("30.2");
-        assertThat(message.rpm()).isEqualTo(1600);
     }
 
     @Test
     void shouldParseValidEventMessage() {
         EventMessage message = parser.parse(
-                """
-                        {
-                          "v": 1,
-                          "ts": 123001,
-                          "seq": 4,
-                          "type": "ALARM_RAISED"
-                        }
-                        """,
-                EventMessage.class
-        );
-
+                "{\"v\":2,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"type\":\"ALARM_RAISED\"}", EventMessage.class);
+        assertThat(message.sessionId()).isEqualTo(SESSION_ID);
         assertThat(message.eventType()).isEqualTo("ALARM_RAISED");
     }
 
     @Test
-    void shouldParseValidHealthMessageWithOptionalFieldsMissing() {
+    void shouldParseValidHealthMessage() {
         HealthMessage message = parser.parse(
-                """
-                        {
-                          "v": 1,
-                          "ts": 123002,
-                          "seq": 5
-                        }
-                        """,
-                HealthMessage.class
-        );
-
-        assertThat(message.v()).isEqualTo(1);
+                "{\"v\":2,\"ts\":123002,\"seq\":5,\"session_id\":\"" + SESSION_ID + "\"}",
+                HealthMessage.class);
+        assertThat(message.sessionId()).isEqualTo(SESSION_ID);
         assertThat(message.state()).isNull();
-        assertThat(message.mqttConnected()).isNull();
     }
 
     @Test
-    void shouldRejectHealthMessageWithoutSequenceNumber() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123002}",
-                HealthMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+    void shouldRejectMissingSessionId() {
+        assertError("{\"v\":2,\"ts\":123000,\"seq\":3}",
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
-    void shouldRejectMalformedJson() {
-        assertErrorType(
-                "{\"v\":1,",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+    void shouldRejectNullSessionId() {
+        assertInvalidSessionId("null");
     }
 
     @Test
-    void shouldRejectBlankPayload() {
-        assertErrorType(
-                "  ",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+    void shouldRejectEmptySessionId() {
+        assertInvalidSessionId("\"\"");
+    }
+
+    @Test
+    void shouldRejectNumericSessionId() {
+        assertError("{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":42}",
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectWrongLengthSessionId() {
+        assertInvalidSessionId("\"550e8400-e29b-41d4-a716-44665544000\"");
+    }
+
+    @Test
+    void shouldRejectNonHexSessionId() {
+        assertInvalidSessionId("\"550e8400-e29b-41d4-a716-44665544000g\"");
+    }
+
+    @Test
+    void shouldRejectWrongHyphenPosition() {
+        assertInvalidSessionId("\"550e8400e-29b-41d4-a716-446655440000\"");
+    }
+
+    @Test
+    void shouldRejectUppercaseSessionId() {
+        assertInvalidSessionId("\"550E8400-E29B-41D4-A716-446655440000\"");
+    }
+
+    @Test
+    void shouldRejectProtocolVersionOne() {
+        assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":1"),
+                MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION);
     }
 
     @Test
     void shouldRejectMissingProtocolVersion() {
-        assertErrorType(
-                "{\"ts\":123000,\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+        assertError(telemetryPayload("3").replace("\"v\":2,", ""),
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
-    void shouldRejectUnsupportedProtocolVersion() {
-        assertErrorType(
-                "{\"v\":2,\"ts\":123000,\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION
-        );
+    void shouldRejectNegativeSequenceNumber() {
+        assertError(telemetryPayload("-1"), MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
-    void shouldRejectStringProtocolVersion() {
-        assertErrorType(
-                "{\"v\":\"1\",\"ts\":123000,\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+    void shouldAcceptZeroSequenceNumber() {
+        assertThat(parser.parse(telemetryPayload("0"), TelemetryMessage.class).seq()).isZero();
     }
 
     @Test
-    void shouldRejectStringTimestamp() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":\"123\",\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+    void shouldAcceptLongMaxSequenceNumber() {
+        assertThat(parser.parse(telemetryPayload(Long.toString(Long.MAX_VALUE)), TelemetryMessage.class).seq())
+                .isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
+    void shouldRejectSequenceNumberAboveLongMax() {
+        assertError(telemetryPayload("9223372036854775808"), MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
     void shouldRejectStringSequenceNumber() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123000,\"seq\":\"42\"}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
-    }
-
-    @Test
-    void shouldRejectFloatingProtocolVersion() {
-        assertErrorType(
-                "{\"v\":1.0,\"ts\":123000,\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+        assertError(telemetryPayload("\"42\""), MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
     void shouldRejectFloatingSequenceNumber() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123000,\"seq\":42.5}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
-    }
-
-    @Test
-    void shouldRejectStringTemperature() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123000,\"seq\":3,\"temp_c\":\"30.2\"}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
-    }
-
-    @Test
-    void shouldRejectStringBoolean() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123002,\"seq\":5,\"mqtt_connected\":\"true\"}",
-                HealthMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
-    }
-
-    @Test
-    void shouldRejectNumericBoolean() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123002,\"seq\":5,\"mqtt_connected\":1}",
-                HealthMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
-    }
-
-    @Test
-    void shouldRejectMissingTimestamp() {
-        assertErrorType(
-                "{\"v\":1,\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+        assertError(telemetryPayload("42.5"), MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
     void shouldRejectMissingSequenceNumber() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123000}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+        assertError(telemetryPayload("3").replace("\"seq\":3,", ""),
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
-    void shouldRejectWrongJsonValueType() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":\"invalid\",\"seq\":3}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.MALFORMED_JSON
-        );
+    void shouldRejectMalformedJson() {
+        assertError("{\"v\":2,", MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectBlankPayload() {
+        assertError("  ", MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
     void shouldRejectTemperatureOutsideDatabasePrecision() {
-        assertErrorType(
-                "{\"v\":1,\"ts\":123000,\"seq\":3,\"temp_c\":12345.67}",
-                TelemetryMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+        assertError(telemetryPayload("3").replace("30.2", "12345.67"),
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
     void shouldRejectBlankEventType() {
         assertErrorType(
-                "{\"v\":1,\"ts\":123001,\"seq\":4,\"type\":\" \"}",
-                EventMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+                "{\"v\":2,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"type\":\" \"}", EventMessage.class,
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    @Test
+    void shouldRejectStringProtocolVersion() {
+        assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":\"2\""),
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectFloatingProtocolVersion() {
+        assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":2.0"),
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectStringTimestamp() {
+        assertError(telemetryPayload("3").replace("\"ts\":123000", "\"ts\":\"123000\""),
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectMissingTimestamp() {
+        assertError(telemetryPayload("3").replace("\"ts\":123000,", ""),
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    @Test
+    void shouldRejectStringTemperature() {
+        assertError(telemetryPayload("3").replace("30.2", "\"30.2\""),
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectStringBoolean() {
+        assertErrorType(
+                healthPayload("\"true\""), HealthMessage.class,
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectNumericBoolean() {
+        assertErrorType(healthPayload("1"), HealthMessage.class,
+                MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
     void shouldRejectEventTypeLongerThanDatabaseColumn() {
-        String eventType = "A".repeat(101);
-
         assertErrorType(
-                "{\"v\":1,\"ts\":123001,\"seq\":4,\"type\":\""
-                        + eventType
-                        + "\"}",
+                "{\"v\":2,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"type\":\"" + "x".repeat(101) + "\"}",
                 EventMessage.class,
-                MqttMessageErrorType.CONSTRAINT_VIOLATION
-        );
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
     }
 
     @Test
@@ -266,26 +224,37 @@ class MqttMessageParserTest {
         String sensitiveValue = "sensitive-event-value" + "x".repeat(100);
 
         assertThatThrownBy(() -> parser.parse(
-                "{\"v\":1,\"ts\":123001,\"seq\":4,\"type\":\""
-                        + sensitiveValue
-                        + "\"}",
-                EventMessage.class
-        ))
+                "{\"v\":2,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"type\":\"" + sensitiveValue + "\"}", EventMessage.class))
                 .isInstanceOf(InvalidMqttMessageException.class)
                 .hasMessageNotContaining(sensitiveValue);
     }
 
-    private <T extends VersionedMqttMessage>
-    void assertErrorType(
-            String payload,
-            Class<T> targetType,
-            MqttMessageErrorType expectedErrorType
-    ) {
+    private String telemetryPayload(String sequenceNumber) {
+        return "{\"v\":2,\"ts\":123000,\"seq\":" + sequenceNumber
+                + ",\"session_id\":\"" + SESSION_ID + "\",\"temp_c\":30.2,\"rpm\":1600}";
+    }
+
+    private String healthPayload(String mqttConnected) {
+        return "{\"v\":2,\"ts\":123002,\"seq\":5,\"session_id\":\"" + SESSION_ID
+                + "\",\"mqtt_connected\":" + mqttConnected + "}";
+    }
+
+    private void assertInvalidSessionId(String jsonValue) {
+        assertError("{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":" + jsonValue + "}",
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    private void assertError(String payload, MqttMessageErrorType expectedErrorType) {
+        assertErrorType(payload, TelemetryMessage.class, expectedErrorType);
+    }
+
+    private <T extends VersionedMqttMessage> void assertErrorType(
+            String payload, Class<T> targetType, MqttMessageErrorType expectedErrorType) {
         assertThatThrownBy(() -> parser.parse(payload, targetType))
                 .isInstanceOfSatisfying(
                         InvalidMqttMessageException.class,
-                        exception -> assertThat(exception.getErrorType())
-                                .isEqualTo(expectedErrorType)
+                        exception -> assertThat(exception.getErrorType()).isEqualTo(expectedErrorType)
                 );
     }
 }
