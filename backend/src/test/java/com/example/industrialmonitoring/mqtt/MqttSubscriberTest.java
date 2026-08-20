@@ -65,7 +65,7 @@ class MqttSubscriberTest {
 
     private byte[] invalidUtf8EventPayload() {
         byte[] prefix = (
-                "{\"v\":1,\"ts\":123001,\"seq\":4,"
+                "{\"v\":2,\"ts\":123001,\"seq\":4,"
                         + "\"type\":\"sensitive-value"
         ).getBytes(StandardCharsets.UTF_8);
         byte[] suffix = "\"}".getBytes(StandardCharsets.UTF_8);

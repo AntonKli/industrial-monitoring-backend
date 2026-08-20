@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,9 +63,10 @@ class EventIngestionServiceIntegrationTest {
     @Test
     void shouldCreateDeviceAndPersistEventRecord() {
         EventMessage message = new EventMessage(
-                1,
+                2,
                 123001L,
                 43L,
+                "550e8400-e29b-41d4-a716-446655440000",
                 "ALARM_RAISED"
         );
 
@@ -81,6 +83,8 @@ class EventIngestionServiceIntegrationTest {
         assertThat(savedRecord.getDeviceId()).isEqualTo("edge01");
         assertThat(savedRecord.getGatewayTimestamp()).isEqualTo(123001L);
         assertThat(savedRecord.getSequenceNumber()).isEqualTo(43L);
+        assertThat(savedRecord.getSessionId())
+                .isEqualTo(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"));
         assertThat(savedRecord.getEventType()).isEqualTo("ALARM_RAISED");
         assertThat(savedRecord.getCreatedAt()).isNotNull();
     }

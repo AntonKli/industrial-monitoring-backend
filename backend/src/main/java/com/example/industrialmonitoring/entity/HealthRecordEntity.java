@@ -3,6 +3,7 @@ package com.example.industrialmonitoring.entity;
 import jakarta.persistence.*;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "health_records")
@@ -20,6 +21,9 @@ public class HealthRecordEntity {
 
     @Column(name = "sequence_number", nullable = false)
     private Long sequenceNumber;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
 
     @Column(name = "state")
     private Integer state;
@@ -108,6 +112,10 @@ public class HealthRecordEntity {
 
     public Long getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public UUID getSessionId() {
+        return sessionId;
     }
 
     public Integer getState() {

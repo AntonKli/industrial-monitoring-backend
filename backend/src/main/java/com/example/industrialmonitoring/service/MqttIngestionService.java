@@ -3,9 +3,6 @@ package com.example.industrialmonitoring.service;
 import com.example.industrialmonitoring.dto.EventMessage;
 import com.example.industrialmonitoring.dto.HealthMessage;
 import com.example.industrialmonitoring.dto.TelemetryMessage;
-import com.example.industrialmonitoring.entity.EventRecordEntity;
-import com.example.industrialmonitoring.entity.HealthRecordEntity;
-import com.example.industrialmonitoring.entity.TelemetryRecordEntity;
 import com.example.industrialmonitoring.repository.EventRecordRepository;
 import com.example.industrialmonitoring.repository.HealthRecordRepository;
 import com.example.industrialmonitoring.repository.TelemetryRecordRepository;
@@ -13,6 +10,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 @Service
 public class MqttIngestionService {
@@ -25,6 +24,9 @@ public class MqttIngestionService {
     private final Counter telemetryRecordsSavedCounter;
     private final Counter eventRecordsSavedCounter;
     private final Counter healthRecordsSavedCounter;
+    private final Counter telemetryDuplicatesCounter;
+    private final Counter eventDuplicatesCounter;
+    private final Counter healthDuplicatesCounter;
 
     public MqttIngestionService(
             DeviceService deviceService,
@@ -49,45 +51,50 @@ public class MqttIngestionService {
         this.healthRecordsSavedCounter = Counter.builder("industrial_health_records_saved_total")
                 .description("Total number of persisted health records")
                 .register(meterRegistry);
+
+        this.telemetryDuplicatesCounter = duplicateCounter(meterRegistry, "telemetry");
+        this.eventDuplicatesCounter = duplicateCounter(meterRegistry, "event");
+        this.healthDuplicatesCounter = duplicateCounter(meterRegistry, "health");
     }
 
     @Transactional
-    public void ingestTelemetry(String deviceId, TelemetryMessage message) {
+    public IngestionResult ingestTelemetry(String deviceId, TelemetryMessage message) {
         deviceService.ensureDeviceExists(deviceId);
 
-        TelemetryRecordEntity entity = new TelemetryRecordEntity(
+        int inserted = telemetryRecordRepository.insertIfAbsent(
                 deviceId,
+                UUID.fromString(message.sessionId()),
                 message.ts(),
                 message.seq(),
                 message.temperatureC(),
                 message.rpm()
         );
 
-        telemetryRecordRepository.save(entity);
-        telemetryRecordsSavedCounter.increment();
+        return result(inserted, telemetryRecordsSavedCounter, telemetryDuplicatesCounter);
     }
 
     @Transactional
-    public void ingestEvent(String deviceId, EventMessage message) {
+    public IngestionResult ingestEvent(String deviceId, EventMessage message) {
         deviceService.ensureDeviceExists(deviceId);
 
-        EventRecordEntity entity = new EventRecordEntity(
+        int inserted = eventRecordRepository.insertIfAbsent(
                 deviceId,
+                UUID.fromString(message.sessionId()),
                 message.ts(),
                 message.seq(),
                 message.eventType()
         );
 
-        eventRecordRepository.save(entity);
-        eventRecordsSavedCounter.increment();
+        return result(inserted, eventRecordsSavedCounter, eventDuplicatesCounter);
     }
 
     @Transactional
-    public void ingestHealth(String deviceId, HealthMessage message) {
+    public IngestionResult ingestHealth(String deviceId, HealthMessage message) {
         deviceService.ensureDeviceExists(deviceId);
 
-        HealthRecordEntity entity = new HealthRecordEntity(
+        int inserted = healthRecordRepository.insertIfAbsent(
                 deviceId,
+                UUID.fromString(message.sessionId()),
                 message.ts(),
                 message.seq(),
                 message.state(),
@@ -102,7 +109,27 @@ public class MqttIngestionService {
                 message.diagLastError()
         );
 
-        healthRecordRepository.save(entity);
-        healthRecordsSavedCounter.increment();
+        return result(inserted, healthRecordsSavedCounter, healthDuplicatesCounter);
+    }
+
+    private Counter duplicateCounter(MeterRegistry meterRegistry, String messageType) {
+        return Counter.builder("industrial_mqtt_messages_duplicate_total")
+                .description("Total number of duplicate MQTT messages")
+                .tag("message_type", messageType)
+                .register(meterRegistry);
+    }
+
+    private IngestionResult result(
+            int inserted,
+            Counter savedCounter,
+            Counter duplicateCounter
+    ) {
+        if (inserted == 1) {
+            savedCounter.increment();
+            return IngestionResult.STORED;
+        }
+
+        duplicateCounter.increment();
+        return IngestionResult.DUPLICATE;
     }
 }

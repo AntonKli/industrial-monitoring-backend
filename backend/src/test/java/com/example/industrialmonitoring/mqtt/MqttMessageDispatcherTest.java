@@ -18,6 +18,8 @@ import static org.mockito.Mockito.verify;
 
 class MqttMessageDispatcherTest {
 
+    private static final String SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+
     private MqttIngestionService ingestionService;
     private MqttMessageDispatcher dispatcher;
 
@@ -47,15 +49,17 @@ class MqttMessageDispatcherTest {
     void shouldDispatchValidTelemetryMessage() {
         dispatcher.dispatch(
                 "rtz/edge01/telemetry",
-                "{\"v\":1,\"ts\":123000,\"seq\":3,\"temp_c\":30.2,\"rpm\":1600}"
+                "{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID
+                        + "\",\"temp_c\":30.2,\"rpm\":1600}"
         );
 
         verify(ingestionService).ingestTelemetry(
                 eq("edge01"),
                 eq(new TelemetryMessage(
-                        1,
+                        2,
                         123000L,
                         3L,
+                        SESSION_ID,
                         new java.math.BigDecimal("30.2"),
                         1600
                 ))
@@ -66,12 +70,13 @@ class MqttMessageDispatcherTest {
     void shouldDispatchValidEventMessage() {
         dispatcher.dispatch(
                 "rtz/edge01/events",
-                "{\"v\":1,\"ts\":123001,\"seq\":4,\"type\":\"ALARM_RAISED\"}"
+                "{\"v\":2,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"type\":\"ALARM_RAISED\"}"
         );
 
         verify(ingestionService).ingestEvent(
                 eq("edge01"),
-                eq(new EventMessage(1, 123001L, 4L, "ALARM_RAISED"))
+                eq(new EventMessage(2, 123001L, 4L, SESSION_ID, "ALARM_RAISED"))
         );
     }
 
@@ -79,15 +84,17 @@ class MqttMessageDispatcherTest {
     void shouldDispatchValidHealthMessage() {
         dispatcher.dispatch(
                 "rtz/edge01/health",
-                "{\"v\":1,\"ts\":123002,\"seq\":5,\"mqtt_connected\":true}"
+                "{\"v\":2,\"ts\":123002,\"seq\":5,\"session_id\":\"" + SESSION_ID
+                        + "\",\"mqtt_connected\":true}"
         );
 
         verify(ingestionService).ingestHealth(
                 eq("edge01"),
                 eq(new HealthMessage(
-                        1,
+                        2,
                         123002L,
                         5L,
+                        SESSION_ID,
                         null,
                         true,
                         null,
@@ -130,7 +137,7 @@ class MqttMessageDispatcherTest {
     void shouldNotCallIngestionForInvalidTopic() {
         assertThatThrownBy(() -> dispatcher.dispatch(
                 "other/edge01/telemetry",
-                "{\"v\":1,\"ts\":123000,\"seq\":3}"
+                "{\"v\":2,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID + "\"}"
         )).isInstanceOf(InvalidMqttMessageException.class);
 
         verify(ingestionService, never())
