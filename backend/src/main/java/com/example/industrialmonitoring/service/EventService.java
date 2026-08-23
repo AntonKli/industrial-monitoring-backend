@@ -24,7 +24,7 @@ public class EventService {
 
     @Transactional(readOnly = true)
     public List<EventRecordResponse> findAllEvents() {
-        return eventRecordRepository.findAll()
+        return eventRecordRepository.findAllByOrderByCreatedAtDescIdDesc()
                 .stream()
                 .map(eventRecordMapper::toResponse)
                 .toList();
@@ -32,7 +32,7 @@ public class EventService {
 
     @Transactional(readOnly = true)
     public List<EventRecordResponse> findEventsByDeviceId(String deviceId) {
-        return eventRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId)
+        return eventRecordRepository.findByDeviceIdOrderByCreatedAtDescIdDesc(deviceId)
                 .stream()
                 .map(eventRecordMapper::toResponse)
                 .toList();

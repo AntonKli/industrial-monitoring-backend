@@ -16,39 +16,61 @@ import java.util.UUID;
 
 public interface TelemetryRecordRepository extends JpaRepository<TelemetryRecordEntity, Long> {
 
-    List<TelemetryRecordEntity> findByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    List<TelemetryRecordEntity> findAllByOrderByCreatedAtDescIdDesc();
 
-    Page<TelemetryRecordEntity> findByDeviceIdOrderByCreatedAtDesc(
+    Page<TelemetryRecordEntity> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
+
+    List<TelemetryRecordEntity> findByDeviceIdOrderByCreatedAtDescIdDesc(String deviceId);
+
+    Page<TelemetryRecordEntity> findByDeviceIdOrderByCreatedAtDescIdDesc(
             String deviceId,
             Pageable pageable
     );
 
-    Page<TelemetryRecordEntity> findByDeviceIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+    Page<TelemetryRecordEntity> findByDeviceIdAndCreatedAtBetweenOrderByCreatedAtDescIdDesc(
             String deviceId,
             OffsetDateTime from,
             OffsetDateTime to,
             Pageable pageable
     );
 
-    Optional<TelemetryRecordEntity> findFirstByOrderByCreatedAtDesc();
+    Optional<TelemetryRecordEntity> findFirstByOrderByCreatedAtDescIdDesc();
 
-    Optional<TelemetryRecordEntity> findFirstByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    Optional<TelemetryRecordEntity> findFirstByDeviceIdOrderByCreatedAtDescIdDesc(String deviceId);
+
+    @Query(value = """
+            SELECT *
+            FROM telemetry_records
+            WHERE device_id = :deviceId
+              AND session_generation IS NOT NULL
+              AND session_id IS NOT NULL
+            ORDER BY session_generation DESC,
+                     sequence_number DESC,
+                     gateway_timestamp DESC,
+                     created_at DESC,
+                     id DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelemetryRecordEntity> findLatestObservedByDeviceId(
+            @Param("deviceId") String deviceId
+    );
 
     @Modifying
     @Query(value = """
             INSERT INTO telemetry_records (
-                device_id, session_id, gateway_timestamp, sequence_number,
-                temperature_c, rpm
+                device_id, session_id, session_generation,
+                gateway_timestamp, sequence_number, temperature_c, rpm
             )
             VALUES (
-                :deviceId, :sessionId, :gatewayTimestamp, :sequenceNumber,
-                :temperatureC, :rpm
+                :deviceId, :sessionId, :sessionGeneration,
+                :gatewayTimestamp, :sequenceNumber, :temperatureC, :rpm
             )
             ON CONFLICT (device_id, session_id, sequence_number) DO NOTHING
             """, nativeQuery = true)
     int insertIfAbsent(
             @Param("deviceId") String deviceId,
             @Param("sessionId") UUID sessionId,
+            @Param("sessionGeneration") Long sessionGeneration,
             @Param("gatewayTimestamp") Long gatewayTimestamp,
             @Param("sequenceNumber") Long sequenceNumber,
             @Param("temperatureC") BigDecimal temperatureC,

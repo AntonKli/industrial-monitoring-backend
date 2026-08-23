@@ -57,8 +57,7 @@ export class Devices implements OnInit {
 
     this.monitoringApi.getEvents().subscribe({
       next: (events: MonitoringEvent[]) => {
-        const latestEvents =
-          events.slice(-5).reverse();
+        const latestEvents = events.slice(0, 5);
 
         this.recentEvents.set(latestEvents);
       },

@@ -4,10 +4,14 @@ import com.example.industrialmonitoring.dto.TelemetryRecordResponse;
 import com.example.industrialmonitoring.service.TelemetryService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.format.annotation.DateTimeFormat;
-import java.time.OffsetDateTime;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @RestController
@@ -36,8 +40,28 @@ public class TelemetryController {
     }
 
     @GetMapping("/latest")
+    @Deprecated(since = "1.4b")
     public TelemetryRecordResponse getLatestTelemetryRecord() {
-        return telemetryService.findLatestTelemetryRecord();
+        return telemetryService.findLatestReceivedTelemetryRecord();
+    }
+
+    @GetMapping("/latest-received")
+    public TelemetryRecordResponse getLatestReceivedTelemetryRecord() {
+        return telemetryService.findLatestReceivedTelemetryRecord();
+    }
+
+    @GetMapping("/device/{deviceId}/latest-received")
+    public TelemetryRecordResponse getLatestReceivedTelemetryRecordByDeviceId(
+            @PathVariable String deviceId
+    ) {
+        return telemetryService.findLatestReceivedTelemetryRecordByDeviceId(deviceId);
+    }
+
+    @GetMapping("/device/{deviceId}/latest-observed")
+    public TelemetryRecordResponse getLatestObservedTelemetryRecordByDeviceId(
+            @PathVariable String deviceId
+    ) {
+        return telemetryService.findLatestObservedTelemetryRecordByDeviceId(deviceId);
     }
 
     @GetMapping("/device/{deviceId}")
@@ -58,19 +82,20 @@ public class TelemetryController {
                 PageRequest.of(page, size)
         );
     }
+
     @GetMapping("/device/{deviceId}/range")
-public Page<TelemetryRecordResponse> getTelemetryRecordsByDeviceIdAndTimeRange(
-        @PathVariable String deviceId,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "50") int size
-) {
-    return telemetryService.findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
-            deviceId,
-            from,
-            to,
-            PageRequest.of(page, size)
-    );
-}
+    public Page<TelemetryRecordResponse> getTelemetryRecordsByDeviceIdAndTimeRange(
+            @PathVariable String deviceId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size
+    ) {
+        return telemetryService.findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
+                deviceId,
+                from,
+                to,
+                PageRequest.of(page, size)
+        );
+    }
 }

@@ -8,8 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.OffsetDateTime;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Service
@@ -28,7 +28,7 @@ public class TelemetryService {
 
     @Transactional(readOnly = true)
     public List<TelemetryRecordResponse> findAllTelemetryRecords() {
-        return telemetryRecordRepository.findAll()
+        return telemetryRecordRepository.findAllByOrderByCreatedAtDescIdDesc()
                 .stream()
                 .map(telemetryRecordMapper::toResponse)
                 .toList();
@@ -36,20 +36,34 @@ public class TelemetryService {
 
     @Transactional(readOnly = true)
     public Page<TelemetryRecordResponse> findAllTelemetryRecords(Pageable pageable) {
-        return telemetryRecordRepository.findAll(pageable)
+        return telemetryRecordRepository.findAllByOrderByCreatedAtDescIdDesc(pageable)
                 .map(telemetryRecordMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
-    public TelemetryRecordResponse findLatestTelemetryRecord() {
-        return telemetryRecordRepository.findFirstByOrderByCreatedAtDesc()
+    public TelemetryRecordResponse findLatestReceivedTelemetryRecord() {
+        return telemetryRecordRepository.findFirstByOrderByCreatedAtDescIdDesc()
+                .map(telemetryRecordMapper::toResponse)
+                .orElseThrow(TelemetryRecordNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public TelemetryRecordResponse findLatestReceivedTelemetryRecordByDeviceId(String deviceId) {
+        return telemetryRecordRepository.findFirstByDeviceIdOrderByCreatedAtDescIdDesc(deviceId)
+                .map(telemetryRecordMapper::toResponse)
+                .orElseThrow(TelemetryRecordNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public TelemetryRecordResponse findLatestObservedTelemetryRecordByDeviceId(String deviceId) {
+        return telemetryRecordRepository.findLatestObservedByDeviceId(deviceId)
                 .map(telemetryRecordMapper::toResponse)
                 .orElseThrow(TelemetryRecordNotFoundException::new);
     }
 
     @Transactional(readOnly = true)
     public List<TelemetryRecordResponse> findTelemetryRecordsByDeviceId(String deviceId) {
-        return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId)
+        return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDescIdDesc(deviceId)
                 .stream()
                 .map(telemetryRecordMapper::toResponse)
                 .toList();
@@ -57,21 +71,22 @@ public class TelemetryService {
 
     @Transactional(readOnly = true)
     public Page<TelemetryRecordResponse> findTelemetryRecordsByDeviceId(String deviceId, Pageable pageable) {
-        return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId, pageable)
+        return telemetryRecordRepository.findByDeviceIdOrderByCreatedAtDescIdDesc(deviceId, pageable)
                 .map(telemetryRecordMapper::toResponse);
     }
-@Transactional(readOnly = true)
-public Page<TelemetryRecordResponse> findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
-        String deviceId,
-        OffsetDateTime from,
-        OffsetDateTime to,
-        Pageable pageable
-) {
-    return telemetryRecordRepository.findByDeviceIdAndCreatedAtBetweenOrderByCreatedAtDesc(
-            deviceId,
-            from,
-            to,
-            pageable
-    ).map(telemetryRecordMapper::toResponse);
-}
+
+    @Transactional(readOnly = true)
+    public Page<TelemetryRecordResponse> findTelemetryRecordsByDeviceIdAndCreatedAtBetween(
+            String deviceId,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            Pageable pageable
+    ) {
+        return telemetryRecordRepository.findByDeviceIdAndCreatedAtBetweenOrderByCreatedAtDescIdDesc(
+                deviceId,
+                from,
+                to,
+                pageable
+        ).map(telemetryRecordMapper::toResponse);
+    }
 }

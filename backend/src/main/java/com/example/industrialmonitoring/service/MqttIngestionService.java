@@ -3,6 +3,9 @@ package com.example.industrialmonitoring.service;
 import com.example.industrialmonitoring.dto.EventMessage;
 import com.example.industrialmonitoring.dto.HealthMessage;
 import com.example.industrialmonitoring.dto.TelemetryMessage;
+import com.example.industrialmonitoring.dto.VersionedMqttMessage;
+import com.example.industrialmonitoring.mqtt.InvalidMqttMessageException;
+import com.example.industrialmonitoring.mqtt.MqttMessageErrorType;
 import com.example.industrialmonitoring.repository.EventRecordRepository;
 import com.example.industrialmonitoring.repository.HealthRecordRepository;
 import com.example.industrialmonitoring.repository.TelemetryRecordRepository;
@@ -17,6 +20,7 @@ import java.util.UUID;
 public class MqttIngestionService {
 
     private final DeviceService deviceService;
+    private final MqttDeviceSessionRegistry sessionRegistry;
     private final TelemetryRecordRepository telemetryRecordRepository;
     private final EventRecordRepository eventRecordRepository;
     private final HealthRecordRepository healthRecordRepository;
@@ -30,12 +34,14 @@ public class MqttIngestionService {
 
     public MqttIngestionService(
             DeviceService deviceService,
+            MqttDeviceSessionRegistry sessionRegistry,
             TelemetryRecordRepository telemetryRecordRepository,
             EventRecordRepository eventRecordRepository,
             HealthRecordRepository healthRecordRepository,
             MeterRegistry meterRegistry
     ) {
         this.deviceService = deviceService;
+        this.sessionRegistry = sessionRegistry;
         this.telemetryRecordRepository = telemetryRecordRepository;
         this.eventRecordRepository = eventRecordRepository;
         this.healthRecordRepository = healthRecordRepository;
@@ -60,10 +66,13 @@ public class MqttIngestionService {
     @Transactional
     public IngestionResult ingestTelemetry(String deviceId, TelemetryMessage message) {
         deviceService.ensureDeviceExists(deviceId);
+        UUID sessionId = UUID.fromString(message.sessionId());
+        Long sessionGeneration = registerSessionIfV3(deviceId, message, sessionId);
 
         int inserted = telemetryRecordRepository.insertIfAbsent(
                 deviceId,
-                UUID.fromString(message.sessionId()),
+                sessionId,
+                sessionGeneration,
                 message.ts(),
                 message.seq(),
                 message.temperatureC(),
@@ -76,10 +85,13 @@ public class MqttIngestionService {
     @Transactional
     public IngestionResult ingestEvent(String deviceId, EventMessage message) {
         deviceService.ensureDeviceExists(deviceId);
+        UUID sessionId = UUID.fromString(message.sessionId());
+        Long sessionGeneration = registerSessionIfV3(deviceId, message, sessionId);
 
         int inserted = eventRecordRepository.insertIfAbsent(
                 deviceId,
-                UUID.fromString(message.sessionId()),
+                sessionId,
+                sessionGeneration,
                 message.ts(),
                 message.seq(),
                 message.eventType()
@@ -91,10 +103,13 @@ public class MqttIngestionService {
     @Transactional
     public IngestionResult ingestHealth(String deviceId, HealthMessage message) {
         deviceService.ensureDeviceExists(deviceId);
+        UUID sessionId = UUID.fromString(message.sessionId());
+        Long sessionGeneration = registerSessionIfV3(deviceId, message, sessionId);
 
         int inserted = healthRecordRepository.insertIfAbsent(
                 deviceId,
-                UUID.fromString(message.sessionId()),
+                sessionId,
+                sessionGeneration,
                 message.ts(),
                 message.seq(),
                 message.state(),
@@ -110,6 +125,26 @@ public class MqttIngestionService {
         );
 
         return result(inserted, healthRecordsSavedCounter, healthDuplicatesCounter);
+    }
+
+    private Long registerSessionIfV3(
+            String deviceId,
+            VersionedMqttMessage message,
+            UUID sessionId
+    ) {
+        if (message.v() != 3) {
+            return null;
+        }
+
+        Long sessionGeneration = message.sessionGeneration();
+        if (sessionGeneration == null || sessionGeneration < 1) {
+            throw new InvalidMqttMessageException(
+                    MqttMessageErrorType.CONSTRAINT_VIOLATION,
+                    "MQTT protocol v3 requires session_generation between 1 and Long.MAX_VALUE"
+            );
+        }
+        sessionRegistry.register(deviceId, sessionGeneration, sessionId);
+        return sessionGeneration;
     }
 
     private Counter duplicateCounter(MeterRegistry meterRegistry, String messageType) {

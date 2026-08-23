@@ -11,23 +11,26 @@ import java.util.UUID;
 
 public interface EventRecordRepository extends JpaRepository<EventRecordEntity, Long> {
 
-    List<EventRecordEntity> findByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    List<EventRecordEntity> findAllByOrderByCreatedAtDescIdDesc();
+
+    List<EventRecordEntity> findByDeviceIdOrderByCreatedAtDescIdDesc(String deviceId);
 
     @Modifying
     @Query(value = """
             INSERT INTO event_records (
-                device_id, session_id, gateway_timestamp, sequence_number,
-                event_type
+                device_id, session_id, session_generation,
+                gateway_timestamp, sequence_number, event_type
             )
             VALUES (
-                :deviceId, :sessionId, :gatewayTimestamp, :sequenceNumber,
-                :eventType
+                :deviceId, :sessionId, :sessionGeneration,
+                :gatewayTimestamp, :sequenceNumber, :eventType
             )
             ON CONFLICT (device_id, session_id, sequence_number) DO NOTHING
             """, nativeQuery = true)
     int insertIfAbsent(
             @Param("deviceId") String deviceId,
             @Param("sessionId") UUID sessionId,
+            @Param("sessionGeneration") Long sessionGeneration,
             @Param("gatewayTimestamp") Long gatewayTimestamp,
             @Param("sequenceNumber") Long sequenceNumber,
             @Param("eventType") String eventType

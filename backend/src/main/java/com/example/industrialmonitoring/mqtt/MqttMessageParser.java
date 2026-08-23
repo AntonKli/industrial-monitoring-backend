@@ -47,6 +47,7 @@ public class MqttMessageParser {
 
             validateProtocolVersion(message);
             validateConstraints(message);
+            validateSessionGeneration(message);
 
             return message;
         } catch (JsonProcessingException exception) {
@@ -55,10 +56,23 @@ public class MqttMessageParser {
     }
 
     private void validateProtocolVersion(VersionedMqttMessage message) {
-        if (message.v() != null && message.v() != 2) {
+        if (message.v() != null && message.v() != 2 && message.v() != 3) {
             throw new InvalidMqttMessageException(
                     MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION,
                     "Unsupported MQTT protocol version"
+            );
+        }
+    }
+
+    private void validateSessionGeneration(VersionedMqttMessage message) {
+        if (message.v() == null || message.v() != 3) {
+            return;
+        }
+
+        if (message.sessionGeneration() == null || message.sessionGeneration() < 1) {
+            throw new InvalidMqttMessageException(
+                    MqttMessageErrorType.CONSTRAINT_VIOLATION,
+                    "MQTT protocol v3 requires session_generation between 1 and Long.MAX_VALUE"
             );
         }
     }

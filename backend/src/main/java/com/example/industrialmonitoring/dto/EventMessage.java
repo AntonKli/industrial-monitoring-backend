@@ -23,9 +23,22 @@ public record EventMessage(
         @JsonProperty("session_id")
         String sessionId,
 
+        @JsonProperty("session_generation")
+        Long sessionGeneration,
+
         @NotBlank
         @Size(max = 100)
         @JsonProperty("type")
         String eventType
 ) implements VersionedMqttMessage {
+
+    public EventMessage(
+            Integer v,
+            Long ts,
+            Long seq,
+            String sessionId,
+            String eventType
+    ) {
+        this(v, ts, seq, sessionId, null, eventType);
+    }
 }

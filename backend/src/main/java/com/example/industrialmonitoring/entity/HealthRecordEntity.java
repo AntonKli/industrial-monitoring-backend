@@ -25,6 +25,9 @@ public class HealthRecordEntity {
     @Column(name = "session_id")
     private UUID sessionId;
 
+    @Column(name = "session_generation")
+    private Long sessionGeneration;
+
     @Column(name = "state")
     private Integer state;
 
@@ -116,6 +119,10 @@ public class HealthRecordEntity {
 
     public UUID getSessionId() {
         return sessionId;
+    }
+
+    public Long getSessionGeneration() {
+        return sessionGeneration;
     }
 
     public Integer getState() {

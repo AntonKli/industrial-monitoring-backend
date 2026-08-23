@@ -13,6 +13,8 @@ public class TelemetryRecordMapper {
                 entity.getDeviceId(),
                 entity.getGatewayTimestamp(),
                 entity.getSequenceNumber(),
+                entity.getSessionId(),
+                entity.getSessionGeneration(),
                 entity.getTemperatureC(),
                 entity.getRpm(),
                 entity.getCreatedAt()

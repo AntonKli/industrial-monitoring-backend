@@ -171,10 +171,11 @@ Example telemetry message:
 
 ```json
 {
-  "v": 2,
-  "ts": 123000,
-  "seq": 3,
+  "v": 3,
+  "ts": 42000,
+  "seq": 42,
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_generation": 7,
   "temp_c": 30.2,
   "rpm": 1600
 }
@@ -194,10 +195,18 @@ The backend validates the topic and JSON payload before any database access:
 * the topic root must match `MQTT_TOPIC_ROOT`
 * device IDs must not be blank and must not exceed 100 characters
 * `v`, `ts`, `seq` and `session_id` are required for every message type
-* protocol version `v` must be `2`; version 1 is no longer accepted
+* protocol versions 2 and 3 are accepted; version 1, version 4 and unknown
+  versions are rejected
+* protocol v2 is a transition and history-only format; its records store
+  `session_generation = NULL` and never qualify as latest observed data
+* protocol v3 requires `session_generation` between 1 and Java
+  `Long.MAX_VALUE`; generations may contain gaps and do not need to start at 1
 * `session_id` must be a canonical lowercase UUID and remains stable for one
   gateway application run, including MQTT reconnects
-* `seq` must be between `0` and Java `Long.MAX_VALUE` (`2^63 - 1`)
+* `seq` must be between `0` and Java `Long.MAX_VALUE` (`2^63 - 1`) and is
+  ordered only within its session
+* `ts` is currently `seq * 1000`: a synthetic, session-relative millisecond
+  value, not Unix time or UTC and not comparable between devices
 * JSON scalar types must match the DTO contract; strings are not coerced to
   numbers or booleans, and floating-point values are not coerced to integers
 * event `type` values must not be blank and must not exceed 100 characters
@@ -207,12 +216,49 @@ Unknown JSON fields are currently tolerated for forward compatibility. No
 additional domain limits are imposed on timestamps, RPM, health states or
 diagnostic codes because the gateway contract does not define such limits.
 
+The backend contract deliberately continues to accept `seq` and
+`session_generation` up to Java `Long.MAX_VALUE`, and PostgreSQL stores and
+sorts these values exactly. JavaScript `number` values are only exact integers
+up to `Number.MAX_SAFE_INTEGER` (`9,007,199,254,740,991`), so larger values may
+be rounded when displayed in the dashboard. Latest-observed selection remains
+correct because ordering and selection happen server-side. The MQTT and REST
+contracts are therefore not restricted to JavaScript's safe-integer range.
+
 MQTT persistence is idempotent per message type using
 `(device_id, session_id, sequence_number)`. The gateway creates a new session
 ID for every application run and reuses the original session ID and sequence
 number for MQTT redeliveries and buffered telemetry replay. Duplicate delivery
 uses first-write-wins semantics: the original record remains unchanged even if
 a later payload with the same idempotency key contains different data.
+
+For protocol v3, a shared session registry enforces a one-to-one mapping per
+device between `session_generation` and `session_id`. The generation remains
+stable across MQTT reconnects and application Stop/Start and increases across
+Warm Reset, Cold Reset, full application download and runtime restart. A reused
+generation with another UUID, or a reused UUID with another generation, is
+rejected before any monitoring record is stored. Reset Origin clears CODESYS
+persistence and is therefore an explicit device re-provisioning boundary.
+Power-loss durability depends on the target hardware and its CODESYS persistent
+storage support.
+
+### Received and observed ordering
+
+`latestReceived` means the record stored last according to
+`created_at DESC, id DESC`. `created_at` is backend storage/transaction time,
+not gateway event time and not the exact MQTT socket receive time.
+
+`latestObserved` exists only per device and message type. It considers only v3
+records with non-null session ordering data and sorts by
+`session_generation DESC, sequence_number DESC, gateway_timestamp DESC,
+created_at DESC, id DESC`. There is no global latest-observed order across
+devices. UUIDs are never sorted as time values.
+
+Valid late messages are retained in history and pass through normal
+idempotency handling. A first delivery is `STORED`, a repeated idempotency key
+is `DUPLICATE`, and neither an older sequence nor an older generation can move
+the per-device latest-observed state backwards. Historical rows with null
+session ordering data remain available only through history and
+latest-received queries.
 
 Rejected messages are classified as malformed JSON, invalid UTF-8 payloads,
 constraint violations, unsupported protocol versions, invalid topics or
@@ -228,11 +274,21 @@ Monitoring endpoints:
 ```text
 GET /api/devices
 GET /api/telemetry/latest
+GET /api/telemetry/latest-received
+GET /api/telemetry/device/{deviceId}/latest-received
+GET /api/telemetry/device/{deviceId}/latest-observed
 GET /api/telemetry/paged?page=0&size=50
 GET /api/telemetry/device/{deviceId}/range
 GET /api/events
 GET /api/health/latest
+GET /api/health/latest-received
+GET /api/health/device/{deviceId}/latest-received
+GET /api/health/device/{deviceId}/latest-observed
 ```
+
+The existing `/api/telemetry/latest` and `/api/health/latest` endpoints are
+deprecated compatibility aliases for their global `latest-received`
+counterparts. There is deliberately no global `latest-observed` endpoint.
 
 Export endpoints:
 
@@ -371,7 +427,11 @@ The sender address must be accepted or verified by the selected SMTP provider. S
 
 ### Dashboard
 
-The dashboard displays backend availability, registered-device count, current temperature, motor speed and device diagnostics.
+The dashboard displays backend availability and registered-device count. It
+automatically selects a single registered device or lets the operator select
+one of several devices, then displays protocol-v3 latest-observed telemetry and
+health for that same device. Backend storage time is shown separately; the
+gateway timestamp is presented only as session-relative logical milliseconds.
 
 ![Angular Monitoring Dashboard](docs/images/angular-dashboard.png)
 

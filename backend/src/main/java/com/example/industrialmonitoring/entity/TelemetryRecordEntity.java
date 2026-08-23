@@ -26,6 +26,9 @@ public class TelemetryRecordEntity {
     @Column(name = "session_id")
     private UUID sessionId;
 
+    @Column(name = "session_generation")
+    private Long sessionGeneration;
+
     @Column(name = "temperature_c", precision = 6, scale = 2)
     private BigDecimal temperatureC;
 
@@ -71,6 +74,10 @@ public class TelemetryRecordEntity {
 
     public UUID getSessionId() {
         return sessionId;
+    }
+
+    public Long getSessionGeneration() {
+        return sessionGeneration;
     }
 
     public BigDecimal getTemperatureC() {

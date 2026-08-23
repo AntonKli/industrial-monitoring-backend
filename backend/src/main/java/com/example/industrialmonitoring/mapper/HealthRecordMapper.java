@@ -13,6 +13,8 @@ public class HealthRecordMapper {
                 entity.getDeviceId(),
                 entity.getGatewayTimestamp(),
                 entity.getSequenceNumber(),
+                entity.getSessionId(),
+                entity.getSessionGeneration(),
                 entity.getState(),
                 entity.getMqttConnected(),
                 entity.getPubLastOk(),
