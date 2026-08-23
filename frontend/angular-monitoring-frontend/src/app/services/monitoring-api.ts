@@ -24,6 +24,8 @@ export interface Telemetry {
   deviceId: string;
   gatewayTimestamp: number;
   sequenceNumber: number;
+  sessionId: string | null;
+  sessionGeneration: number | null;
   temperatureC: number;
   rpm: number;
   createdAt: string;
@@ -34,6 +36,8 @@ export interface DeviceHealth {
   deviceId: string;
   gatewayTimestamp: number;
   sequenceNumber: number;
+  sessionId: string | null;
+  sessionGeneration: number | null;
   state: number;
   mqttConnected: boolean;
   pubLastOk: boolean;
@@ -51,6 +55,8 @@ export interface MonitoringEvent {
   deviceId: string;
   gatewayTimestamp: number;
   sequenceNumber: number;
+  sessionId: string | null;
+  sessionGeneration: number | null;
   eventType: string;
   createdAt: string;
 }
@@ -80,9 +86,42 @@ export class MonitoringApi {
     return this.http.get<Telemetry>('/api/telemetry/latest');
   }
 
+  getLatestReceivedTelemetry(): Observable<Telemetry> {
+    return this.http.get<Telemetry>('/api/telemetry/latest-received');
+  }
+
+  getLatestReceivedTelemetryForDevice(deviceId: string): Observable<Telemetry> {
+    return this.http.get<Telemetry>(
+      `/api/telemetry/device/${encodeURIComponent(deviceId)}/latest-received`
+    );
+  }
+
+  getLatestObservedTelemetry(deviceId: string): Observable<Telemetry> {
+    return this.http.get<Telemetry>(
+      `/api/telemetry/device/${encodeURIComponent(deviceId)}/latest-observed`
+    );
+  }
+
   getLatestHealth(): Observable<DeviceHealth> {
     return this.http.get<DeviceHealth>('/api/health/latest');
   }
+
+  getLatestReceivedHealth(): Observable<DeviceHealth> {
+    return this.http.get<DeviceHealth>('/api/health/latest-received');
+  }
+
+  getLatestReceivedHealthForDevice(deviceId: string): Observable<DeviceHealth> {
+    return this.http.get<DeviceHealth>(
+      `/api/health/device/${encodeURIComponent(deviceId)}/latest-received`
+    );
+  }
+
+  getLatestObservedHealth(deviceId: string): Observable<DeviceHealth> {
+    return this.http.get<DeviceHealth>(
+      `/api/health/device/${encodeURIComponent(deviceId)}/latest-observed`
+    );
+  }
+
   getEvents(): Observable<MonitoringEvent[]> {
     return this.http.get<MonitoringEvent[]>('/api/events');
   }

@@ -12,23 +12,44 @@ import java.util.UUID;
 
 public interface HealthRecordRepository extends JpaRepository<HealthRecordEntity, Long> {
 
-    List<HealthRecordEntity> findByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    List<HealthRecordEntity> findAllByOrderByCreatedAtDescIdDesc();
 
-    Optional<HealthRecordEntity> findFirstByOrderByCreatedAtDesc();
+    List<HealthRecordEntity> findByDeviceIdOrderByCreatedAtDescIdDesc(String deviceId);
 
-    Optional<HealthRecordEntity> findFirstByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    Optional<HealthRecordEntity> findFirstByOrderByCreatedAtDescIdDesc();
+
+    Optional<HealthRecordEntity> findFirstByDeviceIdOrderByCreatedAtDescIdDesc(String deviceId);
+
+    @Query(value = """
+            SELECT *
+            FROM health_records
+            WHERE device_id = :deviceId
+              AND session_generation IS NOT NULL
+              AND session_id IS NOT NULL
+            ORDER BY session_generation DESC,
+                     sequence_number DESC,
+                     gateway_timestamp DESC,
+                     created_at DESC,
+                     id DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<HealthRecordEntity> findLatestObservedByDeviceId(
+            @Param("deviceId") String deviceId
+    );
 
     @Modifying
     @Query(value = """
             INSERT INTO health_records (
-                device_id, session_id, gateway_timestamp, sequence_number,
-                state, mqtt_connected, pub_last_ok, buffer_fill, buffer_drops,
+                device_id, session_id, session_generation,
+                gateway_timestamp, sequence_number, state,
+                mqtt_connected, pub_last_ok, buffer_fill, buffer_drops,
                 diag_uptime_s, diag_reconnects, diag_pub_ok, diag_pub_fail,
                 diag_last_error
             )
             VALUES (
-                :deviceId, :sessionId, :gatewayTimestamp, :sequenceNumber,
-                :state, :mqttConnected, :pubLastOk, :bufferFill, :bufferDrops,
+                :deviceId, :sessionId, :sessionGeneration,
+                :gatewayTimestamp, :sequenceNumber, :state,
+                :mqttConnected, :pubLastOk, :bufferFill, :bufferDrops,
                 :diagUptimeS, :diagReconnects, :diagPubOk, :diagPubFail,
                 :diagLastError
             )
@@ -37,6 +58,7 @@ public interface HealthRecordRepository extends JpaRepository<HealthRecordEntity
     int insertIfAbsent(
             @Param("deviceId") String deviceId,
             @Param("sessionId") UUID sessionId,
+            @Param("sessionGeneration") Long sessionGeneration,
             @Param("gatewayTimestamp") Long gatewayTimestamp,
             @Param("sequenceNumber") Long sequenceNumber,
             @Param("state") Integer state,

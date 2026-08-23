@@ -22,6 +22,9 @@ public record HealthMessage(
         @JsonProperty("session_id")
         String sessionId,
 
+        @JsonProperty("session_generation")
+        Long sessionGeneration,
+
         Integer state,
 
         @JsonProperty("mqtt_connected")
@@ -52,4 +55,39 @@ public record HealthMessage(
         Integer diagLastError
 
 ) implements VersionedMqttMessage {
+
+    public HealthMessage(
+            Integer v,
+            Long ts,
+            Long seq,
+            String sessionId,
+            Integer state,
+            Boolean mqttConnected,
+            Boolean pubLastOk,
+            Integer bufferFill,
+            Long bufferDrops,
+            Long diagUptimeS,
+            Long diagReconnects,
+            Long diagPubOk,
+            Long diagPubFail,
+            Integer diagLastError
+    ) {
+        this(
+                v,
+                ts,
+                seq,
+                sessionId,
+                null,
+                state,
+                mqttConnected,
+                pubLastOk,
+                bufferFill,
+                bufferDrops,
+                diagUptimeS,
+                diagReconnects,
+                diagPubOk,
+                diagPubFail,
+                diagLastError
+        );
+    }
 }

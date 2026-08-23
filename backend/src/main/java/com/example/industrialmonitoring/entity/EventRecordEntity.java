@@ -25,6 +25,9 @@ public class EventRecordEntity {
     @Column(name = "session_id")
     private UUID sessionId;
 
+    @Column(name = "session_generation")
+    private Long sessionGeneration;
+
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 
@@ -66,6 +69,10 @@ public class EventRecordEntity {
 
     public UUID getSessionId() {
         return sessionId;
+    }
+
+    public Long getSessionGeneration() {
+        return sessionGeneration;
     }
 
     public String getEventType() {

@@ -182,6 +182,13 @@ The selected records cover both July 22 and July 23. July 24 is not included.
 
 Using an exclusive upper boundary avoids artificial values such as `23:59:59.999999` and works cleanly with database range queries.
 
+`createdAt` is the backend storage/transaction timestamp. Export periods are
+therefore receive-/storage-time periods, not gateway event-time periods. The
+current gateway `ts` value is session-relative (`seq * 1000`) and is neither
+Unix time nor UTC, so it is not used to delimit exports. Protocol-v2 and
+historical rows with null session ordering data remain exportable; Story 1.4b
+does not change the existing CSV or ZIP schema.
+
 ### Inclusive Angular end date
 
 The Angular form presents both selected dates as inclusive. Before calling the backend, it adds one calendar day to the selected end date.

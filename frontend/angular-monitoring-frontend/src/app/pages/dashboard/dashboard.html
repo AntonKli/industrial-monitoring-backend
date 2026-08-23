@@ -1,6 +1,24 @@
 <section class="dashboard">
   <h2>System Overview</h2>
 
+  @if (devices().length > 0) {
+  <div class="device-selector">
+    <label for="dashboard-device">Observed device</label>
+    <select
+      id="dashboard-device"
+      [ngModel]="selectedDeviceId()"
+      (ngModelChange)="selectDevice($event)"
+    >
+      @if (devices().length > 1) {
+      <option value="">Select a device</option>
+      }
+      @for (device of devices(); track device.id) {
+      <option [value]="device.deviceId">{{ device.deviceId }}</option>
+      }
+    </select>
+  </div>
+  }
+
   <div class="status-grid">
     <article
       class="status-card"
@@ -29,9 +47,12 @@
     }
   </div>
 
+  @if (!selectedDeviceId() && devices().length > 1) {
+  <p class="empty-state">Select a device to view its latest observed state.</p>
+  } @else if (telemetryState() === 'data') {
   @if (latestTelemetry(); as telemetry) {
   <article class="telemetry-details">
-    <h3>Latest Telemetry</h3>
+    <h3>Latest Observed Telemetry</h3>
 
     <dl>
       <div>
@@ -40,25 +61,49 @@
       </div>
 
       <div>
+        <dt>Session Generation</dt>
+        <dd>{{ telemetry.sessionGeneration }}</dd>
+      </div>
+
+      <div>
         <dt>Sequence</dt>
         <dd>{{ telemetry.sequenceNumber }}</dd>
       </div>
 
       <div>
-        <dt>Received At</dt>
+        <dt>Gateway Logical Time</dt>
+        <dd>{{ telemetry.gatewayTimestamp }} ms</dd>
+      </div>
+
+      <div>
+        <dt>Stored by Backend</dt>
         <dd>
           {{ telemetry.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}
         </dd>
       </div>
     </dl>
   </article>
-  } @else {
+  }
+  } @else if (telemetryState() === 'empty') {
+  <p class="empty-state">
+    No protocol-v3 telemetry has been observed for {{ selectedDeviceId() }}.
+  </p>
+  } @else if (telemetryState() === 'error') {
+  <p>{{ telemetryErrorMessage() }}</p>
+  } @else if (telemetryState() === 'loading') {
   <p>Loading telemetry data...</p>
   }
 
+  @if (healthState() === 'data') {
   @if (latestHealth(); as health) {
   <article class="health-details">
-    <h3>Device Health</h3>
+    <h3>Latest Observed Device Health</h3>
+
+    <p class="observed-context">
+      Session generation {{ health.sessionGeneration }}, sequence
+      {{ health.sequenceNumber }} · stored by backend
+      {{ health.createdAt | date:'dd.MM.yyyy, HH:mm:ss' }}
+    </p>
 
     <div class="health-grid">
       <div
@@ -115,8 +160,21 @@
     </div>
   </article>
   }
+  } @else if (healthState() === 'empty') {
+  <p class="empty-state">
+    No protocol-v3 health data has been observed for {{ selectedDeviceId() }}.
+  </p>
+  } @else if (healthState() === 'error') {
+  <p>{{ healthErrorMessage() }}</p>
+  } @else if (healthState() === 'loading') {
+  <p>Loading device health data...</p>
+  }
 
-  @if (errorMessage()) {
-  <p>{{ errorMessage() }}</p>
+  @if (backendErrorMessage()) {
+  <p>{{ backendErrorMessage() }}</p>
+  }
+
+  @if (deviceErrorMessage()) {
+  <p>{{ deviceErrorMessage() }}</p>
   }
 </section>

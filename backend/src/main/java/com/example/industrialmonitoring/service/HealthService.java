@@ -25,22 +25,36 @@ public class HealthService {
 
     @Transactional(readOnly = true)
     public List<HealthRecordResponse> findAllHealthRecords() {
-        return healthRecordRepository.findAll()
+        return healthRecordRepository.findAllByOrderByCreatedAtDescIdDesc()
                 .stream()
                 .map(healthRecordMapper::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public HealthRecordResponse findLatestHealthRecord() {
-        return healthRecordRepository.findFirstByOrderByCreatedAtDesc()
+    public HealthRecordResponse findLatestReceivedHealthRecord() {
+        return healthRecordRepository.findFirstByOrderByCreatedAtDescIdDesc()
+                .map(healthRecordMapper::toResponse)
+                .orElseThrow(HealthRecordNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public HealthRecordResponse findLatestReceivedHealthRecordByDeviceId(String deviceId) {
+        return healthRecordRepository.findFirstByDeviceIdOrderByCreatedAtDescIdDesc(deviceId)
+                .map(healthRecordMapper::toResponse)
+                .orElseThrow(HealthRecordNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public HealthRecordResponse findLatestObservedHealthRecordByDeviceId(String deviceId) {
+        return healthRecordRepository.findLatestObservedByDeviceId(deviceId)
                 .map(healthRecordMapper::toResponse)
                 .orElseThrow(HealthRecordNotFoundException::new);
     }
 
     @Transactional(readOnly = true)
     public List<HealthRecordResponse> findHealthRecordsByDeviceId(String deviceId) {
-        return healthRecordRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId)
+        return healthRecordRepository.findByDeviceIdOrderByCreatedAtDescIdDesc(deviceId)
                 .stream()
                 .map(healthRecordMapper::toResponse)
                 .toList();

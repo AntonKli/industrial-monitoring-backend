@@ -24,10 +24,24 @@ public record TelemetryMessage(
         @JsonProperty("session_id")
         String sessionId,
 
+        @JsonProperty("session_generation")
+        Long sessionGeneration,
+
         @JsonProperty("temp_c")
         @Digits(integer = 4, fraction = 2)
         BigDecimal temperatureC,
 
         Integer rpm
 ) implements VersionedMqttMessage {
+
+    public TelemetryMessage(
+            Integer v,
+            Long ts,
+            Long seq,
+            String sessionId,
+            BigDecimal temperatureC,
+            Integer rpm
+    ) {
+        this(v, ts, seq, sessionId, null, temperatureC, rpm);
+    }
 }

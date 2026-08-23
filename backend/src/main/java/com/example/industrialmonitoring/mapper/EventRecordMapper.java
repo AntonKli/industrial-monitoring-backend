@@ -13,6 +13,8 @@ public class EventRecordMapper {
                 entity.getDeviceId(),
                 entity.getGatewayTimestamp(),
                 entity.getSequenceNumber(),
+                entity.getSessionId(),
+                entity.getSessionGeneration(),
                 entity.getEventType(),
                 entity.getCreatedAt()
         );

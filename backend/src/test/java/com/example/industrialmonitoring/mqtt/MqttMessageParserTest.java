@@ -26,12 +26,85 @@ class MqttMessageParserTest {
     }
 
     @Test
-    void shouldParseValidTelemetryMessage() {
+    void shouldParseValidProtocolV2TelemetryWithoutSessionGeneration() {
         TelemetryMessage message = parser.parse(telemetryPayload("3"), TelemetryMessage.class);
         assertThat(message.v()).isEqualTo(2);
         assertThat(message.seq()).isEqualTo(3L);
         assertThat(message.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(message.sessionGeneration()).isNull();
         assertThat(message.temperatureC()).isEqualByComparingTo("30.2");
+    }
+
+    @Test
+    void shouldParseValidProtocolV3Telemetry() {
+        TelemetryMessage message = parser.parse(v3TelemetryPayload("7"), TelemetryMessage.class);
+
+        assertThat(message.v()).isEqualTo(3);
+        assertThat(message.sessionGeneration()).isEqualTo(7L);
+    }
+
+    @Test
+    void shouldParseValidProtocolV3Event() {
+        EventMessage message = parser.parse(
+                "{\"v\":3,\"ts\":123001,\"seq\":4,\"session_id\":\"" + SESSION_ID
+                        + "\",\"session_generation\":7,\"type\":\"ALARM_RAISED\"}",
+                EventMessage.class
+        );
+
+        assertThat(message.sessionGeneration()).isEqualTo(7L);
+    }
+
+    @Test
+    void shouldParseValidProtocolV3Health() {
+        HealthMessage message = parser.parse(
+                "{\"v\":3,\"ts\":123002,\"seq\":5,\"session_id\":\"" + SESSION_ID
+                        + "\",\"session_generation\":7}",
+                HealthMessage.class
+        );
+
+        assertThat(message.sessionGeneration()).isEqualTo(7L);
+    }
+
+    @Test
+    void shouldRejectProtocolV3WithoutSessionGeneration() {
+        assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":3"),
+                MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    @Test
+    void shouldRejectZeroProtocolV3SessionGeneration() {
+        assertError(v3TelemetryPayload("0"), MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    @Test
+    void shouldRejectNegativeProtocolV3SessionGeneration() {
+        assertError(v3TelemetryPayload("-1"), MqttMessageErrorType.CONSTRAINT_VIOLATION);
+    }
+
+    @Test
+    void shouldAcceptLongMaxProtocolV3SessionGeneration() {
+        TelemetryMessage message = parser.parse(
+                v3TelemetryPayload(Long.toString(Long.MAX_VALUE)),
+                TelemetryMessage.class
+        );
+
+        assertThat(message.sessionGeneration()).isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
+    void shouldRejectProtocolV3SessionGenerationAboveLongMax() {
+        assertError(v3TelemetryPayload("9223372036854775808"),
+                MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectFloatingProtocolV3SessionGeneration() {
+        assertError(v3TelemetryPayload("7.5"), MqttMessageErrorType.MALFORMED_JSON);
+    }
+
+    @Test
+    void shouldRejectStringProtocolV3SessionGeneration() {
+        assertError(v3TelemetryPayload("\"7\""), MqttMessageErrorType.MALFORMED_JSON);
     }
 
     @Test
@@ -97,6 +170,12 @@ class MqttMessageParserTest {
     @Test
     void shouldRejectProtocolVersionOne() {
         assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":1"),
+                MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION);
+    }
+
+    @Test
+    void shouldRejectUnknownProtocolVersion() {
+        assertError(telemetryPayload("3").replace("\"v\":2", "\"v\":4"),
                 MqttMessageErrorType.UNSUPPORTED_PROTOCOL_VERSION);
     }
 
@@ -233,6 +312,12 @@ class MqttMessageParserTest {
     private String telemetryPayload(String sequenceNumber) {
         return "{\"v\":2,\"ts\":123000,\"seq\":" + sequenceNumber
                 + ",\"session_id\":\"" + SESSION_ID + "\",\"temp_c\":30.2,\"rpm\":1600}";
+    }
+
+    private String v3TelemetryPayload(String sessionGeneration) {
+        return "{\"v\":3,\"ts\":123000,\"seq\":3,\"session_id\":\"" + SESSION_ID
+                + "\",\"session_generation\":" + sessionGeneration
+                + ",\"temp_c\":30.2,\"rpm\":1600}";
     }
 
     private String healthPayload(String mqttConnected) {
